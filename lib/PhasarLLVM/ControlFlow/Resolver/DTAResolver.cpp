@@ -16,12 +16,14 @@
 
 #include "phasar/PhasarLLVM/ControlFlow/Resolver/DTAResolver.h"
 
-#include "phasar/PhasarLLVM/TypeHierarchy/LLVMTypeHierarchy.h"
+#include "phasar/PhasarLLVM/ControlFlow/LLVMVFTableProvider.h"
+#include "phasar/PhasarLLVM/Utils/LLVMIRToSrc.h"
 #include "phasar/PhasarLLVM/Utils/LLVMShorthands.h"
 #include "phasar/Utils/Logger.h"
 #include "phasar/Utils/Utilities.h"
 
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/InstIterator.h"
@@ -29,16 +31,23 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/IR/Value.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
 
 #include <memory>
 
 using namespace psr;
 
-DTAResolver::DTAResolver(LLVMProjectIRDB &IRDB, LLVMTypeHierarchy &TH)
-    : CHAResolver(IRDB, TH) {}
+DTAResolver::DTAResolver(const LLVMProjectIRDB *IRDB,
+                         const LLVMVFTableProvider *VTP,
+                         const DIBasedTypeHierarchy *TH)
+    : CHAResolver(IRDB, VTP, TH) {}
 
 bool DTAResolver::heuristicAntiConstructorThisType(
     const llvm::BitCastInst *BitCast) {
+  llvm::report_fatal_error("Does not work with opaque pointers anymore");
+#if 0
   // We check if the caller is a constructor, and if the this argument has the
   // same type as the source type of the bitcast. If it is the case, it returns
   // false, true otherwise.
@@ -56,12 +65,17 @@ bool DTAResolver::heuristicAntiConstructorThisType(
   }
 
   return true;
+#endif
 }
 
 bool DTAResolver::heuristicAntiConstructorVtablePos(
     const llvm::BitCastInst *BitCast) {
+  llvm::report_fatal_error("Does not work with opaque pointers anymore");
+#if 0
+
   // Better heuristic than the previous one, can handle the CRTP. Based on the
   // previous one.
+
 
   if (heuristicAntiConstructorThisType(BitCast)) {
     return true;
@@ -70,20 +84,21 @@ bool DTAResolver::heuristicAntiConstructorVtablePos(
   // We know that we are in a constructor and the source type of the bitcast is
   // the same as the this argument. We then check where the bitcast is against
   // the store instruction of the vtable.
-  const auto *StructTy = stripPointer(BitCast->getSrcTy());
-  if (StructTy == nullptr) {
-    throw std::runtime_error(
-        "StructTy == nullptr in the heuristic_anti_contructor");
-  }
+  if (!BitCast->getSrcTy()->isOpaquePointerTy()) {
+    const auto *StructTy = psr::legacy::stripPointer(BitCast->getSrcTy());
+    if (StructTy == nullptr) {
+      throw std::runtime_error(
+          "StructTy == nullptr in the heuristic_anti_contructor");
+    }
 
-  // If it doesn't contain vtable, there is no reason to call this class in the
-  // DTA graph, so no need to add it
-  if (StructTy->isStructTy()) {
-    if (Resolver::TH->hasVFTable(llvm::dyn_cast<llvm::StructType>(StructTy))) {
-      return false;
+    // If it doesn't contain vtable, there is no reason to call this class in
+    // the DTA graph, so no need to add it
+    if (StructTy->isStructTy()) {
+      if (VTP->hasVFTable(llvm::dyn_cast<llvm::StructType>(StructTy))) {
+        return false;
+      }
     }
   }
-
   // So there is a vtable, the question is, where is it compared to the bitcast
   // instruction Carefull, there can be multiple vtable storage, we want to get
   // the last one vtable storage typically are : store i32 (...)** bitcast (i8**
@@ -135,28 +150,38 @@ bool DTAResolver::heuristicAntiConstructorVtablePos(
   }
 
   return (BitcastNum > VtableNum);
+#endif
 }
 
 void DTAResolver::otherInst(const llvm::Instruction *Inst) {
+  llvm::report_fatal_error("Does not work with opaque pointers anymore");
+#if 0
+  if (Inst->getType()->isOpaquePointerTy()) {
+    /// XXX: We may want to get these information on a different way, e.g. by
+    /// analyzing the debug info
+    return;
+  }
   if (const auto *BitCast = llvm::dyn_cast<llvm::BitCastInst>(Inst)) {
     // We add the connection between the two types in the DTA graph
     auto *Src = BitCast->getSrcTy();
     auto *Dest = BitCast->getDestTy();
 
-    const auto *SrcStructType =
-        llvm::dyn_cast<llvm::StructType>(stripPointer(Src));
-    const auto *DestStructType =
-        llvm::dyn_cast<llvm::StructType>(stripPointer(Dest));
+    const auto *SrcStructType = llvm::dyn_cast<llvm::StructType>(
+        psr::legacy::stripPointer(Src)); // NOLINT
+    const auto *DestStructType = llvm::dyn_cast<llvm::StructType>(
+        psr::legacy::stripPointer(Dest)); // NOLINT
 
     if (SrcStructType && DestStructType &&
         heuristicAntiConstructorVtablePos(BitCast)) {
       TypeGraph.addLink(DestStructType, SrcStructType);
     }
   }
+#endif
 }
-
 auto DTAResolver::resolveVirtualCall(const llvm::CallBase *CallSite)
     -> FunctionSetTy {
+  llvm::report_fatal_error("Does not work with opaque pointers anymore");
+#if 0
   FunctionSetTy PossibleCallTargets;
 
   PHASAR_LOG_LEVEL(DEBUG,
@@ -176,7 +201,7 @@ auto DTAResolver::resolveVirtualCall(const llvm::CallBase *CallSite)
 
   PHASAR_LOG_LEVEL(DEBUG, "Virtual function table entry is: " << VtableIndex);
 
-  const auto *ReceiverType = getReceiverType(CallSite);
+  const auto *ReceiverType = getReceiverStructType(CallSite);
 
   auto PossibleTypes = TypeGraph.getTypes(ReceiverType);
 
@@ -208,6 +233,7 @@ auto DTAResolver::resolveVirtualCall(const llvm::CallBase *CallSite)
 #endif
 
   return PossibleCallTargets;
+#endif
 }
 
 std::string DTAResolver::str() const { return "DTA"; }

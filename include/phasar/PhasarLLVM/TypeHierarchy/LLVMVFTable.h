@@ -10,6 +10,7 @@
 #ifndef PHASAR_PHASARLLVM_TYPEHIERARCHY_LLVMVFTABLE_H_
 #define PHASAR_PHASARLLVM_TYPEHIERARCHY_LLVMVFTABLE_H_
 
+#include "phasar/PhasarLLVM/TypeHierarchy/LLVMVFTableData.h"
 #include "phasar/TypeHierarchy/VFTable.h"
 
 #include "nlohmann/json.hpp"
@@ -22,6 +23,7 @@ class ConstantStruct;
 } // namespace llvm
 
 namespace psr {
+class DIBasedTypeHierarchy;
 
 /**
  * 	@brief Represents a virtual method table.
@@ -30,12 +32,15 @@ namespace psr {
  * 	virtual method table matters.
  */
 class LLVMVFTable : public VFTable<const llvm::Function *> {
+
 private:
-  friend class LLVMTypeHierarchy;
   friend class DIBasedTypeHierarchy;
   std::vector<const llvm::Function *> VFT;
 
 public:
+  // NOLINTNEXTLINE
+  static constexpr char NullFunName[] = "__null__";
+
   LLVMVFTable() = default;
   LLVMVFTable(std::vector<const llvm::Function *> Fs) : VFT(std::move(Fs)) {}
   ~LLVMVFTable() override = default;
@@ -66,7 +71,13 @@ public:
 
   void print(llvm::raw_ostream &OS) const override;
 
-  [[nodiscard]] nlohmann::json getAsJson() const override;
+  [[nodiscard]] [[deprecated(
+      "Please use printAsJson() instead")]] nlohmann::json
+  getAsJson() const override;
+
+  [[nodiscard]] LLVMVFTableData getVFTableData() const;
+
+  void printAsJson(llvm::raw_ostream &OS) const override;
 
   [[nodiscard]] std::vector<const llvm::Function *>::iterator begin() {
     return VFT.begin();

@@ -10,7 +10,6 @@
 #ifndef PHASAR_DATAFLOW_IFDSIDE_IDETABULATIONPROBLEM_H_
 #define PHASAR_DATAFLOW_IFDSIDE_IDETABULATIONPROBLEM_H_
 
-#include "phasar/ControlFlow/ICFGBase.h"
 #include "phasar/DB/ProjectIRDBBase.h"
 #include "phasar/DataFlow/IfdsIde/EdgeFunctionUtils.h"
 #include "phasar/DataFlow/IfdsIde/EdgeFunctions.h"
@@ -18,17 +17,14 @@
 #include "phasar/DataFlow/IfdsIde/FlowFunctions.h"
 #include "phasar/DataFlow/IfdsIde/IFDSIDESolverConfig.h"
 #include "phasar/DataFlow/IfdsIde/InitialSeeds.h"
+#include "phasar/DataFlow/IfdsIde/Solver/GenericSolverResults.h"
 #include "phasar/DataFlow/IfdsIde/SolverResults.h"
 #include "phasar/Utils/JoinLattice.h"
 #include "phasar/Utils/NullAnalysisPrinter.h"
-#include "phasar/Utils/Printer.h"
+#include "phasar/Utils/SemiRing.h"
 #include "phasar/Utils/Soundness.h"
 
-#include "llvm/ADT/StringRef.h"
-
 #include <cassert>
-#include <functional>
-#include <memory>
 #include <optional>
 #include <set>
 #include <string>
@@ -62,6 +58,7 @@ template <typename AnalysisDomainTy,
 class IDETabulationProblem : public FlowFunctions<AnalysisDomainTy, Container>,
                              public EdgeFunctions<AnalysisDomainTy>,
                              public JoinLattice<AnalysisDomainTy>,
+                             public SemiRing<AnalysisDomainTy>,
                              public AllTopFnProvider<AnalysisDomainTy> {
 public:
   using ProblemAnalysisDomain = AnalysisDomainTy;
@@ -132,7 +129,7 @@ public:
   /// Generates a text report of the results that is written to the specified
   /// output stream.
   virtual void
-  emitTextReport([[maybe_unused]] const SolverResults<n_t, d_t, l_t> &Results,
+  emitTextReport([[maybe_unused]] GenericSolverResults<n_t, d_t, l_t> Results,
                  llvm::raw_ostream &OS = llvm::outs()) {
     OS << "No text report available!\n";
   }
@@ -140,7 +137,7 @@ public:
   /// Generates a graphical report, e.g. in html or other markup languages, of
   /// the results that is written to the specified output stream.
   virtual void emitGraphicalReport(
-      [[maybe_unused]] const SolverResults<n_t, d_t, l_t> &Results,
+      [[maybe_unused]] GenericSolverResults<n_t, d_t, l_t> Results,
       llvm::raw_ostream &OS = llvm::outs()) {
     OS << "No graphical report available!\n";
   }
@@ -148,6 +145,8 @@ public:
   /// Sets the level of soundness to be used by the analysis. Returns false if
   /// the level of soundness is ignored. Otherwise, true.
   virtual bool setSoundness(Soundness /*S*/) { return false; }
+
+  const ProjectIRDBBase<db_t> *getProjectIRDB() const noexcept { return IRDB; }
 
 protected:
   typename FlowFunctions<AnalysisDomainTy, Container>::FlowFunctionPtrType

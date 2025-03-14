@@ -303,7 +303,8 @@ auto IDETypeStateAnalysisBase::getLocalAliasesAndAllocas(
 }
 
 bool IDETypeStateAnalysisBase::hasMatchingTypeName(const llvm::Type *Ty) {
-  if (const auto *StructTy = llvm::dyn_cast<llvm::StructType>(Ty)) {
+  if (const auto *StructTy = llvm::dyn_cast<llvm::StructType>(Ty);
+      StructTy && StructTy->hasName()) {
     return isTypeNameOfInterest(StructTy->getName());
   }
   // primitive type
@@ -316,15 +317,17 @@ bool IDETypeStateAnalysisBase::hasMatchingTypeName(const llvm::Type *Ty) {
 
 bool IDETypeStateAnalysisBase::hasMatchingType(d_t V) {
   // General case
-  if (V->getType()->isPointerTy()) {
-    if (hasMatchingTypeName(V->getType()->getPointerElementType())) {
+  if (V->getType()->isPointerTy() && !V->getType()->isOpaquePointerTy()) {
+    if (hasMatchingTypeName(V->getType()->getNonOpaquePointerElementType())) {
       return true;
     }
+    // fallthrough
   }
   if (const auto *Alloca = llvm::dyn_cast<llvm::AllocaInst>(V)) {
     if (Alloca->getAllocatedType()->isPointerTy()) {
-      if (hasMatchingTypeName(
-              Alloca->getAllocatedType()->getPointerElementType())) {
+      if (Alloca->getAllocatedType()->isOpaquePointerTy() ||
+          hasMatchingTypeName(
+              Alloca->getAllocatedType()->getNonOpaquePointerElementType())) {
         return true;
       }
     }
@@ -332,7 +335,9 @@ bool IDETypeStateAnalysisBase::hasMatchingType(d_t V) {
   }
   if (const auto *Load = llvm::dyn_cast<llvm::LoadInst>(V)) {
     if (Load->getType()->isPointerTy()) {
-      if (hasMatchingTypeName(Load->getType()->getPointerElementType())) {
+      if (Load->getType()->isOpaquePointerTy() ||
+          hasMatchingTypeName(
+              Load->getType()->getNonOpaquePointerElementType())) {
         return true;
       }
     }
@@ -340,8 +345,10 @@ bool IDETypeStateAnalysisBase::hasMatchingType(d_t V) {
   }
   if (const auto *Store = llvm::dyn_cast<llvm::StoreInst>(V)) {
     if (Store->getValueOperand()->getType()->isPointerTy()) {
-      if (hasMatchingTypeName(
-              Store->getValueOperand()->getType()->getPointerElementType())) {
+      if (Store->getValueOperand()->getType()->isOpaquePointerTy() ||
+          hasMatchingTypeName(Store->getValueOperand()
+                                  ->getType()
+                                  ->getNonOpaquePointerElementType())) {
         return true;
       }
     }

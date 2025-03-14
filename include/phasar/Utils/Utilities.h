@@ -10,11 +10,8 @@
 #ifndef PHASAR_UTILS_UTILITIES_H_
 #define PHASAR_UTILS_UTILITIES_H_
 
-#include "phasar/Utils/BitVectorSet.h"
 #include "phasar/Utils/TypeTraits.h"
 
-#include "llvm/ADT/Hashing.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/raw_ostream.h"
@@ -36,7 +33,15 @@ std::string createTimeStamp();
 
 bool isConstructor(llvm::StringRef MangledName);
 
+namespace legacy {
+// May need to call this function from a safe environment where we have already
+// checked that it does not take any harm. Surround it with the legacy namespace
+// as a marker that this function will be removed soon.
+
+/// [[deprecated("Requires non-opaque pointers, which will no longer be "
+///              "supported by LLVM in the next version!")]]
 const llvm::Type *stripPointer(const llvm::Type *Pointer);
+} // namespace legacy
 
 bool isMangled(llvm::StringRef Name);
 
@@ -143,11 +148,6 @@ intersectWith(ContainerTy &Dest, const OtherContainerTy &Src) {
       It = Dest.erase(It);
     }
   }
-}
-
-template <typename T>
-void intersectWith(BitVectorSet<T> &Dest, const BitVectorSet<T> &Src) {
-  Dest.setIntersectWith(Src);
 }
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
@@ -295,19 +295,25 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
   return OS;
 }
 
-template <typename T>
-LLVM_ATTRIBUTE_ALWAYS_INLINE void assertNotNull(const T & /*Value*/) {}
-
-template <typename T>
-LLVM_ATTRIBUTE_ALWAYS_INLINE void
-assertNotNull([[maybe_unused]] const std::optional<T> &Value) {
-  assert(Value.has_value());
+template <typename T> LLVM_ATTRIBUTE_ALWAYS_INLINE T &assertNotNull(T &Value) {
+  return Value;
 }
 
 template <typename T>
-LLVM_ATTRIBUTE_ALWAYS_INLINE void
-assertNotNull([[maybe_unused]] const T *Value) {
+LLVM_ATTRIBUTE_ALWAYS_INLINE const T &
+assertNotNull(const std::optional<T> &Value) {
+  assert(Value.has_value());
+  return *Value;
+}
+template <typename T>
+LLVM_ATTRIBUTE_ALWAYS_INLINE T &assertNotNull(std::optional<T> &Value) {
+  assert(Value.has_value());
+  return *Value;
+}
+
+template <typename T> LLVM_ATTRIBUTE_ALWAYS_INLINE T &assertNotNull(T *Value) {
   assert(Value != nullptr);
+  return *Value;
 }
 
 template <typename T> void assertAllNotNull([[maybe_unused]] const T &Range) {

@@ -16,7 +16,6 @@
 
 #include <cstddef>
 #include <iterator>
-#include <optional>
 #include <type_traits>
 
 namespace psr {
@@ -59,7 +58,8 @@ private:
 
 template <typename T>
 using IotaRangeType = llvm::iterator_range<IotaIterator<T>>;
-template <typename T> constexpr auto iota(T From, T To) noexcept {
+template <typename T>
+constexpr auto iota(T From, type_identity_t<T> To) noexcept {
   static_assert(std::is_integral_v<T>, "Iota only works on integers");
   using iterator_type = IotaIterator<std::decay_t<T>>;
   auto Ret = llvm::make_range(iterator_type(From), iterator_type(To));

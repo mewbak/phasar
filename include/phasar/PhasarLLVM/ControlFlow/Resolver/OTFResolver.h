@@ -17,7 +17,7 @@
 #ifndef PHASAR_PHASARLLVM_CONTROLFLOW_RESOLVER_OTFRESOLVER_H_
 #define PHASAR_PHASARLLVM_CONTROLFLOW_RESOLVER_OTFRESOLVER_H_
 
-#include "phasar/PhasarLLVM/ControlFlow/Resolver/CHAResolver.h"
+#include "phasar/PhasarLLVM/ControlFlow/Resolver/Resolver.h"
 #include "phasar/PhasarLLVM/Pointer/LLVMAliasInfo.h"
 
 #include <set>
@@ -26,7 +26,6 @@
 #include <vector>
 
 namespace llvm {
-class Instruction;
 class CallBase;
 class Function;
 class Type;
@@ -35,26 +34,17 @@ class Value;
 
 namespace psr {
 
-class LLVMBasedICFG;
-class LLVMTypeHierarchy;
+class DIBasedTypeHierarchy;
 
 class OTFResolver : public Resolver {
-protected:
-  LLVMBasedICFG &ICF;
-  LLVMAliasInfoRef PT;
-
 public:
-  OTFResolver(LLVMProjectIRDB &IRDB, LLVMTypeHierarchy &TH, LLVMBasedICFG &ICF,
+  OTFResolver(const LLVMProjectIRDB *IRDB, const LLVMVFTableProvider *VTP,
               LLVMAliasInfoRef PT);
 
   ~OTFResolver() override = default;
 
-  void preCall(const llvm::Instruction *Inst) override;
-
   void handlePossibleTargets(const llvm::CallBase *CallSite,
                              FunctionSetTy &CalleeTargets) override;
-
-  void postCall(const llvm::Instruction *Inst) override;
 
   FunctionSetTy resolveVirtualCall(const llvm::CallBase *CallSite) override;
 
@@ -68,6 +58,14 @@ public:
                               const llvm::Function *CalleeTarget);
 
   [[nodiscard]] std::string str() const override;
+
+  [[nodiscard]] bool
+  mutatesHelperAnalysisInformation() const noexcept override {
+    return true;
+  }
+
+protected:
+  LLVMAliasInfoRef PT;
 };
 } // namespace psr
 

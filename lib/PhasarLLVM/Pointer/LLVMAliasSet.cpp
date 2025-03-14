@@ -23,6 +23,7 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/MemoryLocation.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
@@ -36,6 +37,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/TypeSize.h"
 
 #include "nlohmann/json.hpp"
 
@@ -315,19 +317,42 @@ bool LLVMAliasSet::intraIsReachableAllocationSiteTy(
   return false;
 }
 
+static llvm::Type *getPointeeTypeOrNull(const llvm::Value *Ptr) {
+  assert(Ptr->getType()->isPointerTy());
+
+  if (!Ptr->getType()->isOpaquePointerTy()) {
+    return Ptr->getType()->getNonOpaquePointerElementType();
+  }
+
+  if (const auto *Arg = llvm::dyn_cast<llvm::Argument>(Ptr)) {
+    if (auto *Ty = Arg->getParamByValType()) {
+      return Ty;
+    }
+    if (auto *Ty = Arg->getParamStructRetType()) {
+      return Ty;
+    }
+  }
+  if (const auto *Alloca = llvm::dyn_cast<llvm::AllocaInst>(Ptr)) {
+    return Alloca->getAllocatedType();
+  }
+  return nullptr;
+}
+
 static bool mayAlias(llvm::AAResults &AA, const llvm::DataLayout &DL,
                      const llvm::Value *V, const llvm::Value *Rep) {
   assert(V->getType()->isPointerTy());
   assert(Rep->getType()->isPointerTy());
 
-  auto VSize = V->getType()->getPointerElementType()->isSized()
-                   ? DL.getTypeStoreSize(V->getType()->getPointerElementType())
-                   : llvm::MemoryLocation::UnknownSize;
+  auto *ElTy = getPointeeTypeOrNull(V);
+  auto *RepElTy = getPointeeTypeOrNull(Rep);
 
-  auto RepSize =
-      Rep->getType()->getPointerElementType()->isSized()
-          ? DL.getTypeStoreSize(Rep->getType()->getPointerElementType())
-          : llvm::MemoryLocation::UnknownSize;
+  auto VSize = ElTy && ElTy->isSized()
+                   ? llvm::LocationSize::precise(DL.getTypeStoreSize(ElTy))
+                   : llvm::LocationSize::precise(1);
+
+  auto RepSize = RepElTy && RepElTy->isSized()
+                     ? llvm::LocationSize::precise(DL.getTypeStoreSize(RepElTy))
+                     : llvm::LocationSize::precise(1);
 
   if (AA.alias(V, VSize, Rep, RepSize) != llvm::AliasResult::NoAlias) {
     return true;
@@ -718,8 +743,35 @@ nlohmann::json LLVMAliasSet::getAsJson() const {
   return J;
 }
 
+LLVMAliasSetData LLVMAliasSet::getLLVMAliasSetData() const {
+  LLVMAliasSetData Data;
+
+  /// Serialize the AliasSets
+  for (const AliasSetTy *PTS : Owner.getAllAliasSets()) {
+
+    std::vector<std::string> PtsJson{};
+    for (const auto *Alias : *PTS) {
+      auto Id = getMetaDataID(Alias);
+      if (Id != "-1") {
+        PtsJson.push_back(std::move(Id));
+      }
+    }
+    if (!PtsJson.empty()) {
+      Data.AliasSets.push_back(std::move(PtsJson));
+    }
+  }
+
+  /// Serialize the AnalyzedFunctions
+  for (const auto *F : AnalyzedFunctions) {
+    Data.AnalyzedFunctions.push_back(F->getName().str());
+  }
+
+  return Data;
+}
+
 void LLVMAliasSet::printAsJson(llvm::raw_ostream &OS) const {
-  OS << getAsJson();
+  LLVMAliasSetData Data = getLLVMAliasSetData();
+  Data.printAsJson(OS);
 }
 
 void LLVMAliasSet::print(llvm::raw_ostream &OS) const {

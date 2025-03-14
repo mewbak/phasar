@@ -131,11 +131,12 @@ public:
   void print(ByConstRef<f_t> Fun, llvm::raw_ostream &OS) const {
     self().printImpl(Fun, OS);
   }
-  [[nodiscard]] nlohmann::json getAsJson(ByConstRef<f_t> Fun) const {
+  [[nodiscard, deprecated("Please use printAsJson() instead")]] nlohmann::json
+  getAsJson(ByConstRef<f_t> Fun) const {
     return self().getAsJsonImpl(Fun);
   }
 
-private:
+protected:
   Derived &self() noexcept { return static_cast<Derived &>(*this); }
   const Derived &self() const noexcept {
     return static_cast<const Derived &>(*this);
@@ -144,7 +145,7 @@ private:
 
 template <typename ICF, typename Domain>
 // NOLINTNEXTLINE(readability-identifier-naming)
-constexpr bool is_cfg_v = is_crtp_base_of_v<CFGBase, ICF>
+PSR_CONCEPT is_cfg_v = is_crtp_base_of_v<CFGBase, ICF>
     &&std::is_same_v<typename ICF::n_t, typename Domain::n_t>
         &&std::is_same_v<typename ICF::f_t, typename Domain::f_t>;
 

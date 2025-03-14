@@ -10,6 +10,7 @@
 #ifndef PHASAR_PHASARLLVM_TYPEHIERARCHY_DIBASEDTYPEHIERARCHY_H
 #define PHASAR_PHASARLLVM_TYPEHIERARCHY_DIBASEDTYPEHIERARCHY_H
 
+#include "phasar/PhasarLLVM/TypeHierarchy/DIBasedTypeHierarchyData.h"
 #include "phasar/PhasarLLVM/TypeHierarchy/LLVMVFTable.h"
 #include "phasar/TypeHierarchy/TypeHierarchy.h"
 
@@ -19,6 +20,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/Support/Casting.h"
 
 #include <deque>
 
@@ -31,18 +33,32 @@ public:
   using ClassType = const llvm::DIType *;
   using f_t = const llvm::Function *;
 
+  static inline constexpr llvm::StringLiteral StructPrefix = "struct.";
+  static inline constexpr llvm::StringLiteral ClassPrefix = "class.";
+  static inline constexpr llvm::StringLiteral VTablePrefix = "_ZTV";
+  static inline constexpr llvm::StringLiteral VTablePrefixDemang =
+      "vtable for ";
+  static inline constexpr llvm::StringLiteral PureVirtualCallName =
+      "__cxa_pure_virtual";
+
   explicit DIBasedTypeHierarchy(const LLVMProjectIRDB &IRDB);
+  explicit DIBasedTypeHierarchy(const LLVMProjectIRDB *IRDB,
+                                const DIBasedTypeHierarchyData &SerializedData);
   ~DIBasedTypeHierarchy() override = default;
+
+  static bool isVTable(llvm::StringRef VarName);
+  static std::string removeVTablePrefix(llvm::StringRef VarName);
 
   [[nodiscard]] bool hasType(ClassType Type) const override {
     return TypeToVertex.count(Type);
   }
 
-  [[nodiscard]] bool isSubType(ClassType Type, ClassType SubType) override {
+  [[nodiscard]] bool isSubType(ClassType Type,
+                               ClassType SubType) const override {
     return llvm::is_contained(subTypesOf(Type), SubType);
   }
 
-  [[nodiscard]] std::set<ClassType> getSubTypes(ClassType Type) override {
+  [[nodiscard]] std::set<ClassType> getSubTypes(ClassType Type) const override {
     const auto &Range = subTypesOf(Type);
     return {Range.begin(), Range.end()};
   }
@@ -51,39 +67,31 @@ public:
   [[nodiscard]] llvm::iterator_range<const ClassType *>
   subTypesOf(ClassType Ty) const noexcept;
 
-  [[nodiscard]] bool isSuperType(ClassType Type, ClassType SuperType) override;
-
-  /// Not supported yet
-  [[nodiscard]] std::set<ClassType> getSuperTypes(ClassType Type) override;
-
   [[nodiscard]] ClassType
-  getType(std::string TypeName) const noexcept override {
+  getType(llvm::StringRef TypeName) const noexcept override {
     return NameToType.lookup(TypeName);
   }
 
-  [[nodiscard]] std::set<ClassType> getAllTypes() const override {
+  [[nodiscard]] std::vector<ClassType> getAllTypes() const override {
     return {VertexTypes.begin(), VertexTypes.end()};
   }
 
   [[nodiscard]] const auto &getAllVTables() const noexcept { return VTables; }
 
-  [[nodiscard]] std::string getTypeName(ClassType Type) const override {
-    return Type->getName().str();
-  }
-
-  [[nodiscard]] bool hasVFTable(ClassType Type) const override;
-
-  [[nodiscard]] const VFTable<f_t> *getVFTable(ClassType Type) const override {
-    auto It = TypeToVertex.find(Type);
-    if (It == TypeToVertex.end()) {
-      return nullptr;
+  [[nodiscard]] llvm::StringRef getTypeName(ClassType Type) const override {
+    if (const auto *CompTy = llvm::dyn_cast<llvm::DICompositeType>(Type)) {
+      auto Ident = CompTy->getIdentifier();
+      return Ident.empty() ? CompTy->getName() : Ident;
     }
-    return &VTables[It->second];
+    return Type->getName();
   }
 
-  [[nodiscard]] size_t size() const override { return VertexTypes.size(); }
-
-  [[nodiscard]] bool empty() const override { return VertexTypes.empty(); }
+  [[nodiscard]] size_t size() const noexcept override {
+    return VertexTypes.size();
+  }
+  [[nodiscard]] bool empty() const noexcept override {
+    return VertexTypes.empty();
+  }
 
   void print(llvm::raw_ostream &OS = llvm::outs()) const override;
 
@@ -93,9 +101,18 @@ public:
    */
   void printAsDot(llvm::raw_ostream &OS = llvm::outs()) const;
 
-  [[nodiscard]] nlohmann::json getAsJson() const override;
+  [[nodiscard]] [[deprecated(
+      "Please use printAsJson() instead")]] nlohmann::json
+  getAsJson() const override;
+
+  /**
+   * @brief Prints the class hierarchy to an ostream in json format.
+   * @param an outputstream
+   */
+  void printAsJson(llvm::raw_ostream &OS = llvm::outs()) const override;
 
 private:
+  [[nodiscard]] DIBasedTypeHierarchyData getTypeHierarchyData() const;
   [[nodiscard]] llvm::iterator_range<const ClassType *>
   subTypesOf(size_t TypeIdx) const noexcept;
 

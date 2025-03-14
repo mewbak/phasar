@@ -19,8 +19,6 @@
 
 #include "phasar/Utils/Utilities.h"
 
-#include "llvm/ADT/DenseMap.h"
-
 #include <string>
 #include <vector>
 
@@ -39,14 +37,6 @@ class CallInst;
 
 namespace psr {
 class LLVMProjectIRDB;
-
-/**
- * @brief Checks if the given LLVM Value is a LLVM Function Pointer.
- * @param V LLVM Value.
- * @return True, if given LLVM Value is a LLVM Function Pointer. False,
- * otherwise.
- */
-bool isFunctionPointer(const llvm::Value *V) noexcept;
 
 /**
  * @brief Checks if the given LLVM Type is a integer like struct.
@@ -257,7 +247,7 @@ llvm::StringRef getVarAnnotationIntrinsicName(const llvm::CallInst *CallInst);
 
 class ModulesToSlotTracker {
   friend class LLVMProjectIRDB;
-  friend class LLVMBasedICFG;
+  friend class GlobalCtorsDtorsModel;
   friend class LLVMZeroValue;
 
 private:

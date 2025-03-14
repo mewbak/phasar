@@ -12,6 +12,7 @@
 
 #include "phasar/DataFlow/IfdsIde/EdgeFunctionSingletonCache.h"
 #include "phasar/Utils/ByRef.h"
+#include "phasar/Utils/EmptyBaseOptimizationUtils.h"
 #include "phasar/Utils/TypeTraits.h"
 
 #include "llvm/ADT/DenseMapInfo.h"
@@ -53,7 +54,7 @@ struct IsEdgeFunction<
 
 } // namespace detail
 template <typename T>
-static inline constexpr bool IsEdgeFunction = detail::IsEdgeFunction<T>::value;
+static constexpr bool IsEdgeFunction = detail::IsEdgeFunction<T>::value;
 
 #else
 // clang-format off

@@ -29,11 +29,15 @@
 #include "phasar/Utils/Logger.h"
 
 #include "llvm/Demangle/Demangle.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <regex>
 
 namespace psr {
 
@@ -421,21 +425,20 @@ IDEGeneralizedLCA::getCallToRetEdgeFunction(IDEGeneralizedLCA::n_t CallSite,
     // found correct place and time
     if (CallNode == getZeroValue() && RetSiteNode == CS->getArgOperand(0)) {
       // find string literal that is used to initialize the string
-      if (auto *User = llvm::dyn_cast<llvm::User>(CS->getArgOperand(1))) {
-        if (auto *GV =
-                llvm::dyn_cast<llvm::GlobalVariable>(User->getOperand(0))) {
-          if (!GV->hasInitializer()) {
-            // in this case we don't know the initial value statically
-            // return ALLBOTTOM;
-            return AllBottom<l_t>{};
-          }
-          if (auto *CDA = llvm::dyn_cast<llvm::ConstantDataArray>(
-                  GV->getInitializer())) {
-            if (CDA->isCString()) {
-              // here we statically know the string literal the std::string is
-              // initialized with
-              return GenConstant{l_t({EdgeValue(CDA->getAsCString().str())})};
-            }
+      const auto *Arg1 = CS->getArgOperand(1)->stripPointerCastsAndAliases();
+
+      if (const auto *GV = llvm::dyn_cast<llvm::GlobalVariable>(Arg1)) {
+        if (!GV->hasInitializer()) {
+          // in this case we don't know the initial value statically
+          // return ALLBOTTOM;
+          return AllBottom<l_t>{};
+        }
+        if (const auto *CDA =
+                llvm::dyn_cast<llvm::ConstantDataArray>(GV->getInitializer())) {
+          if (CDA->isCString()) {
+            // here we statically know the string literal the std::string is
+            // initialized with
+            return GenConstant{l_t({EdgeValue(CDA->getAsCString().str())})};
           }
         }
       }
@@ -498,8 +501,9 @@ EdgeFunction<IDEGeneralizedLCA::l_t> IDEGeneralizedLCA::allTopFunction() {
 }*/
 
 void IDEGeneralizedLCA::emitTextReport(
-    const SolverResults<IDEGeneralizedLCA::n_t, IDEGeneralizedLCA::d_t,
-                        IDEGeneralizedLCA::l_t> &SR,
+    GenericSolverResults<IDEGeneralizedLCA::n_t, IDEGeneralizedLCA::d_t,
+                         IDEGeneralizedLCA::l_t>
+        SR,
     llvm::raw_ostream &Os) {
 
   Os << "\n====================== IDE-Linear-Constant-Analysis Report "
@@ -554,8 +558,8 @@ void IDEGeneralizedLCA::stripBottomResults(
 }
 
 IDEGeneralizedLCA::lca_results_t IDEGeneralizedLCA::getLCAResults(
-    SolverResults<IDEGeneralizedLCA::n_t, IDEGeneralizedLCA::d_t,
-                  IDEGeneralizedLCA::l_t>
+    GenericSolverResults<IDEGeneralizedLCA::n_t, IDEGeneralizedLCA::d_t,
+                         IDEGeneralizedLCA::l_t>
         SR) {
   std::map<std::string, std::map<unsigned, LCAResult>> AggResults;
   llvm::outs() << "\n==== Computing LCA Results ====\n";
@@ -669,11 +673,17 @@ bool IDEGeneralizedLCA::isEntryPoint(const std::string &Name) const {
 }
 
 bool IDEGeneralizedLCA::isStringConstructor(const llvm::Function *F) {
-  return (ICF->getSpecialMemberFunctionType(F) ==
-              SpecialMemberFunctionType::Constructor &&
-          llvm::demangle(F->getName().str())
-                  .find("::allocator<char> >::basic_string") !=
-              std::string::npos);
+  if (ICF->getSpecialMemberFunctionType(F) !=
+      SpecialMemberFunctionType::Constructor) {
+    return false;
+  }
+
+  static const std::regex StringCtorRex(
+      "::basic_string<std::allocator<char>[[:space:]]?>\\(",
+      std::regex::extended | std::regex::nosubs | std::regex::optimize);
+
+  auto DName = llvm::demangle(F->getName().str());
+  return std::regex_search(DName, StringCtorRex);
 }
 
 } // namespace psr

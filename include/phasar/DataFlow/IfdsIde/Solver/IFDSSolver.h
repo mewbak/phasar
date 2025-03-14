@@ -21,7 +21,6 @@
 #include "phasar/DataFlow/IfdsIde/Solver/IDESolver.h"
 #include "phasar/Domain/BinaryDomain.h"
 
-#include <memory>
 #include <set>
 #include <type_traits>
 #include <unordered_map>
@@ -38,11 +37,17 @@ public:
   using n_t = typename AnalysisDomainTy::n_t;
   using i_t = typename AnalysisDomainTy::i_t;
 
-  template <typename IfdsDomainTy,
+  template <typename IfdsDomainTy, typename I,
             typename = std::enable_if_t<
                 std::is_base_of_v<IfdsDomainTy, AnalysisDomainTy>>>
   IFDSSolver(IFDSTabulationProblem<IfdsDomainTy, Container> &IFDSProblem,
-             const i_t *ICF)
+             const I *ICF)
+      : IDESolver<WithBinaryValueDomain<AnalysisDomainTy>>(IFDSProblem, ICF) {}
+  template <typename IfdsDomainTy, typename I,
+            typename = std::enable_if_t<
+                std::is_base_of_v<IfdsDomainTy, AnalysisDomainTy>>>
+  IFDSSolver(IFDSTabulationProblem<IfdsDomainTy, Container> *IFDSProblem,
+             const I *ICF)
       : IDESolver<WithBinaryValueDomain<AnalysisDomainTy>>(IFDSProblem, ICF) {}
 
   ~IFDSSolver() override = default;
@@ -101,6 +106,10 @@ template <typename Problem, typename ICF>
 IFDSSolver(Problem &, ICF *)
     -> IFDSSolver<typename Problem::ProblemAnalysisDomain,
                   typename Problem::container_type>;
+template <typename Problem, typename ICF>
+IFDSSolver(Problem *, ICF *)
+    -> IFDSSolver<typename Problem::ProblemAnalysisDomain,
+                  typename Problem::container_type>;
 
 template <typename Problem>
 using IFDSSolver_P = IFDSSolver<typename Problem::ProblemAnalysisDomain,
@@ -108,8 +117,7 @@ using IFDSSolver_P = IFDSSolver<typename Problem::ProblemAnalysisDomain,
 
 template <typename AnalysisDomainTy, typename Container>
 OwningSolverResults<typename AnalysisDomainTy::n_t,
-                    typename AnalysisDomainTy::d_t,
-                    typename AnalysisDomainTy::l_t>
+                    typename AnalysisDomainTy::d_t, BinaryDomain>
 solveIFDSProblem(IFDSTabulationProblem<AnalysisDomainTy, Container> &Problem,
                  const typename AnalysisDomainTy::i_t &ICF) {
   IFDSSolver<AnalysisDomainTy, Container> Solver(Problem, &ICF);

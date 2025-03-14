@@ -10,9 +10,14 @@
 #ifndef PHASAR_UTILS_TYPETRAITS_H
 #define PHASAR_UTILS_TYPETRAITS_H
 
+#include "phasar/Utils/Macros.h"
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "nlohmann/json.hpp"
+
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -170,47 +175,73 @@ struct variant_idx<std::variant<Ts...>, T>
           size_t,
           std::variant<type_identity<Ts>...>(type_identity<T>{}).index()> {};
 
+template <typename Container> struct ElementType {
+  using IteratorTy =
+      std::decay_t<decltype(llvm::adl_begin(std::declval<Container>()))>;
+  using type = typename std::iterator_traits<IteratorTy>::value_type;
+};
+
+template <typename ProblemTy, typename = bool>
+struct has_isInteresting : std::false_type {}; // NOLINT
+template <typename ProblemTy>
+struct has_isInteresting<
+    ProblemTy,
+    decltype(std::declval<std::add_const_t<ProblemTy>>().isInteresting(
+        std::declval<typename ProblemTy::ProblemAnalysisDomain::n_t>()))>
+    : std::true_type {};
+
+template <typename T, typename = void>
+struct has_llvm_dense_map_info : std::false_type {};
+template <typename T>
+struct has_llvm_dense_map_info<
+    T, std::void_t<decltype(llvm::DenseMapInfo<T>::getEmptyKey()),
+                   decltype(llvm::DenseMapInfo<T>::getTombstoneKey()),
+                   decltype(llvm::DenseMapInfo<T>::getHashValue(
+                       std::declval<T>())),
+                   decltype(llvm::DenseMapInfo<T>::isEqual(std::declval<T>(),
+                                                           std::declval<T>()))>>
+    : std::true_type {};
 } // namespace detail
 
 template <typename T>
-constexpr bool is_iterable_v = detail::is_iterable<T>::value; // NOLINT
+PSR_CONCEPT is_iterable_v = detail::is_iterable<T>::value; // NOLINT
 
 template <typename T, typename Over>
-constexpr bool is_iterable_over_v = // NOLINT
+PSR_CONCEPT is_iterable_over_v = // NOLINT
     detail::is_iterable_over<T, Over>::value;
 
 template <typename T>
-constexpr bool is_pair_v = detail::is_pair<T>::value; // NOLINT
+PSR_CONCEPT is_pair_v = detail::is_pair<T>::value; // NOLINT
 
 template <typename T>
-constexpr bool is_tuple_v = detail::is_tuple<T>::value; // NOLINT
+PSR_CONCEPT is_tuple_v = detail::is_tuple<T>::value; // NOLINT
 
 template <typename T>
-constexpr bool is_llvm_printable_v = // NOLINT
+PSR_CONCEPT is_llvm_printable_v = // NOLINT
     detail::is_llvm_printable<T>::value;
 
 template <typename T>
-constexpr bool is_std_printable_v = // NOLINT
+PSR_CONCEPT is_std_printable_v = // NOLINT
     detail::is_std_printable<T>::value;
 
 template <typename T, typename OS>
-constexpr bool is_printable_v = detail::is_printable<T, OS>::value; // NOLINT
+PSR_CONCEPT is_printable_v = detail::is_printable<T, OS>::value; // NOLINT
 
 template <typename T>
-constexpr bool has_str_v = detail::has_str<T>::value; // NOLINT
+PSR_CONCEPT has_str_v = detail::has_str<T>::value; // NOLINT
 
 template <typename T>
-constexpr bool has_adl_to_string_v = detail::has_adl_to_string<T>::value;
+PSR_CONCEPT has_adl_to_string_v = detail::has_adl_to_string<T>::value;
 
 template <typename T>
-constexpr bool has_erase_iterator_v = // NOLINT
+PSR_CONCEPT has_erase_iterator_v = // NOLINT
     detail::has_erase_iterator<T>::value;
 
 template <typename T>
-constexpr bool is_std_hashable_v = detail::is_std_hashable<T>::value; // NOLINT
+PSR_CONCEPT is_std_hashable_v = detail::is_std_hashable<T>::value; // NOLINT
 
 template <typename T>
-constexpr bool is_llvm_hashable_v = // NOLINT
+PSR_CONCEPT is_llvm_hashable_v = // NOLINT
     detail::is_llvm_hashable<T>::value;
 
 template <typename T> struct is_variant : std::false_type {}; // NOLINT
@@ -218,35 +249,46 @@ template <typename T> struct is_variant : std::false_type {}; // NOLINT
 template <typename... Args>
 struct is_variant<std::variant<Args...>> : std::true_type {}; // NOLINT
 
-template <typename T>
-inline constexpr bool is_variant_v = is_variant<T>::value; // NOLINT
+template <typename T> PSR_CONCEPT is_variant_v = is_variant<T>::value; // NOLINT
 
 template <typename T>
 // NOLINTNEXTLINE
-constexpr bool is_string_like_v = std::is_convertible_v<T, std::string_view>;
+PSR_CONCEPT is_string_like_v = std::is_convertible_v<T, std::string_view>;
 
 template <template <typename> typename Base, typename Derived>
-constexpr bool is_crtp_base_of_v = // NOLINT
+PSR_CONCEPT is_crtp_base_of_v = // NOLINT
     detail::is_crtp_base_of<Base, Derived>::value;
 
 template <typename T>
-static inline constexpr bool HasIsConstant = detail::HasIsConstant<T>::value;
+PSR_CONCEPT HasIsConstant = detail::HasIsConstant<T>::value;
+
+template <typename T> PSR_CONCEPT HasDepth = detail::HasDepth<T>::value;
 
 template <typename T>
-static inline constexpr bool HasDepth = detail::HasDepth<T>::value;
-
-template <typename T>
-static inline constexpr bool IsEqualityComparable =
-    detail::IsEqualityComparable<T>::value;
+PSR_CONCEPT IsEqualityComparable = detail::IsEqualityComparable<T>::value;
 
 template <typename T, typename U>
-static inline constexpr bool AreEqualityComparable =
-    detail::AreEqualityComparable<T, U>::value;
+PSR_CONCEPT AreEqualityComparable = detail::AreEqualityComparable<T, U>::value;
 
+template <typename ProblemTy>
+PSR_CONCEPT has_isInteresting_v = // NOLINT
+    detail::has_isInteresting<ProblemTy>::value;
+
+template <typename T>
+static constexpr bool has_llvm_dense_map_info =
+    detail::has_llvm_dense_map_info<T>::value;
 template <typename T> using type_identity_t = typename type_identity<T>::type;
 
 template <typename Var, typename T>
 static constexpr size_t variant_idx = detail::variant_idx<Var, T>::value;
+
+template <typename Container>
+using ElementType = typename detail::ElementType<Container>::type;
+template <typename T, typename Enable = nlohmann::json>
+struct has_getAsJson : std::false_type {}; // NOLINT
+template <typename T>
+struct has_getAsJson<T, decltype(std::declval<const T>().getAsJson())>
+    : std::true_type {}; // NOLINT
 
 struct TrueFn {
   template <typename... Args>
@@ -258,15 +300,6 @@ struct TrueFn {
 struct FalseFn {
   template <typename... Args>
   [[nodiscard]] bool operator()(const Args &.../*unused*/) const noexcept {
-    return false;
-  }
-};
-
-struct EmptyType {
-  friend constexpr bool operator==(EmptyType /*L*/, EmptyType /*R*/) noexcept {
-    return true;
-  }
-  friend constexpr bool operator!=(EmptyType /*L*/, EmptyType /*R*/) noexcept {
     return false;
   }
 };
@@ -295,6 +328,12 @@ template <typename T, typename = std::enable_if_t<has_adl_to_string_v<T>>>
   using std::to_string;
   return to_string(Val);
 }
+
+struct IdentityFn {
+  template <typename T> decltype(auto) operator()(T &&Val) const noexcept {
+    return std::forward<decltype(Val)>(Val);
+  }
+};
 
 // NOLINTEND(readability-identifier-naming)
 } // namespace psr
