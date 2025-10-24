@@ -27,6 +27,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #include <utility>
@@ -155,12 +156,6 @@ void LLVMBasedICFG::printImpl(llvm::raw_ostream &OS) const {
 void LLVMBasedICFG::printAsJsonImpl(llvm::raw_ostream &OS) const {
   CG.printAsJson(
       OS, [](f_t F) { return F->getName().str(); },
-      [this](n_t Inst) { return IRDB->getInstructionId(Inst); });
-}
-
-nlohmann::json LLVMBasedICFG::getAsJsonImpl() const {
-  return CG.getAsJson(
-      [](f_t F) { return F->getName().str(); },
       [this](n_t Inst) { return IRDB->getInstructionId(Inst); });
 }
 

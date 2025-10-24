@@ -23,6 +23,7 @@
 
 #include <optional>
 #include <string>
+#include <tuple>
 
 // Forward declaration of types for which we only use its pointer or ref type
 namespace llvm {
@@ -33,20 +34,35 @@ class Value;
 class GlobalVariable;
 class Module;
 class DIFile;
-class DIType;
 class DILocation;
 } // namespace llvm
 
 namespace psr {
 
+/// \file This file contains useful structs and functions to get and store
+/// information about the source code or the intermediate representation of the
+/// target being analyzed.
+
+/// \brief Minimal source-code information, based on LLVM debug information
 struct DebugLocation {
   unsigned Line{};
   unsigned Column{};
   const llvm::DIFile *File{};
+
+  friend constexpr bool operator<(DebugLocation L, DebugLocation R) noexcept {
+    return std::tie(L.File, L.Line, L.Column) <
+           std::tie(R.File, R.Line, R.Column);
+  }
+  friend constexpr bool operator==(DebugLocation L, DebugLocation R) noexcept {
+    return std::tie(L.File, L.Line, L.Column) ==
+           std::tie(R.File, R.Line, R.Column);
+  }
 };
 
 [[nodiscard]] llvm::DILocalVariable *getDILocalVariable(const llvm::Value *V);
 
+/// \brief A struct that contains information about a source code line, function
+/// name, file name corresponding to the IR statement.
 struct SourceCodeInfo {
   std::string SourceCodeLine;
   std::string SourceCodeFilename;

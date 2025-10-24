@@ -11,6 +11,9 @@
 #define PHASAR_PHASARLLVM_DOMAIN_LLVMANALYSISDOMAIN_H
 
 #include "phasar/Domain/AnalysisDomain.h"
+#include "phasar/PhasarLLVM/Utils/LLVMAnalysisPrinter.h"
+#include "phasar/Utils/DefaultAnalysisPrinterSelector.h"
+#include "phasar/Utils/TypeTraits.h"
 
 namespace llvm {
 class Value;
@@ -25,6 +28,8 @@ class LLVMProjectIRDB;
 class LLVMBasedICFG;
 class LLVMBasedCFG;
 
+/// \brief An AnalysisDomain that specializes sensible defaults for LLVM-based
+/// analysis
 struct LLVMAnalysisDomainDefault : public AnalysisDomain {
   using d_t = const llvm::Value *;
   using n_t = const llvm::Instruction *;
@@ -36,8 +41,17 @@ struct LLVMAnalysisDomainDefault : public AnalysisDomain {
   using db_t = LLVMProjectIRDB;
 };
 
+/// \brief An AnalysisDomain that specializes sensible defaults for LLVM-based
+/// IFDS analysis
 using LLVMIFDSAnalysisDomainDefault =
     WithBinaryValueDomain<LLVMAnalysisDomainDefault>;
+
+extern template class DefaultLLVMAnalysisPrinter<LLVMIFDSAnalysisDomainDefault>;
+
+template <>
+struct DefaultAnalysisPrinterSelector<LLVMIFDSAnalysisDomainDefault>
+    : type_identity<DefaultLLVMAnalysisPrinter<LLVMIFDSAnalysisDomainDefault>> {
+};
 
 } // namespace psr
 
