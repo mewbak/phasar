@@ -86,7 +86,7 @@ function(generate_ll_file)
         NAMES clang++-${PHASAR_LLVM_VERSION} clang++
         HINTS ${binary_hint_paths})
       find_program(opt REQUIRED
-        NAMES opt-${PHASAR_LLVM_VERSION}4 opt
+        NAMES opt-${PHASAR_LLVM_VERSION} opt
         HINTS ${binary_hint_paths})
 
       set(IS_VALID_VERSION "")
@@ -212,7 +212,7 @@ function(generate_ll_file)
       add_custom_command(
       OUTPUT ${test_code_ll_file}
       COMMAND ${GEN_CMD} ${test_code_file_path} -o ${test_code_ll_file}
-      COMMAND ${CMAKE_CXX_COMPILER_LAUNCHER} ${opt} -mem2reg -S ${test_code_ll_file} -o ${test_code_ll_file}
+      COMMAND ${CMAKE_CXX_COMPILER_LAUNCHER} ${opt} -p mem2reg -S ${test_code_ll_file} -o ${test_code_ll_file}
       COMMENT ${GEN_CMD_COMMENT}
       DEPENDS ${GEN_LL_FILE}
       VERBATIM

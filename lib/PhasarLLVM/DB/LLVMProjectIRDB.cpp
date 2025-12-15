@@ -24,6 +24,7 @@
 
 namespace psr {
 
+[[deprecated]]
 static void setOpaquePointersForCtx(llvm::LLVMContext &Ctx, bool Enable) {
 #if LLVM_VERSION_MAJOR >= 15 && LLVM_VERSION_MAJOR < 17
   if (!Enable) {
@@ -115,28 +116,19 @@ LLVMProjectIRDB::getParsedIRModuleOrErr(const llvm::Twine &IRFileName,
 }
 
 llvm::ErrorOr<LLVMProjectIRDB>
-LLVMProjectIRDB::load(const llvm::Twine &IRFileName,
-                      bool EnableOpaquePointers) {
-  auto FileOrErr =
-      llvm::MemoryBuffer::getFileOrSTDIN(IRFileName, /*IsText=*/true);
-  if (!FileOrErr) {
-    return FileOrErr.getError();
-  }
-
+LLVMProjectIRDB::load(const llvm::Twine &IRFileName) {
   auto Ctx = std::make_unique<llvm::LLVMContext>();
-
-  auto M = getParsedIRModuleOrErr(**FileOrErr, *Ctx);
+  auto M = getParsedIRModuleOrErr(IRFileName, *Ctx);
   if (!M) {
     return M.getError();
   }
 
-  return LLVMProjectIRDB(std::move(*M), std::move(Ctx), EnableOpaquePointers);
+  return LLVMProjectIRDB(std::move(*M), std::move(Ctx));
 }
 
 LLVMProjectIRDB LLVMProjectIRDB::loadOrExit(const llvm::Twine &IRFileName,
-                                            bool EnableOpaquePointers,
                                             int ErrorExitCode) {
-  auto Ret = load(IRFileName, EnableOpaquePointers);
+  auto Ret = load(IRFileName);
   if (!Ret) {
     llvm::WithColor::error()
         << "Could not load LLVM-" << LLVM_VERSION_MAJOR << " IR file "
@@ -145,6 +137,20 @@ LLVMProjectIRDB LLVMProjectIRDB::loadOrExit(const llvm::Twine &IRFileName,
   }
 
   return std::move(*Ret);
+}
+
+LLVMProjectIRDB::LLVMProjectIRDB(const llvm::Twine &IRFileName)
+    : Ctx(new llvm::LLVMContext()) {
+  auto M = getParsedIRModuleOrErr(IRFileName, *Ctx);
+
+  if (!M) {
+    return;
+  }
+
+  auto *NonConst = M->get();
+  Mod = std::move(M.get());
+  ModulesToSlotTracker::setMSTForModule(Mod.get());
+  preprocessModule(NonConst);
 }
 
 LLVMProjectIRDB::LLVMProjectIRDB(const llvm::Twine &IRFileName,
@@ -253,6 +259,18 @@ LLVMProjectIRDB::LLVMProjectIRDB(std::unique_ptr<llvm::Module> Mod,
   this->Ctx = std::move(Ctx);
 }
 
+LLVMProjectIRDB::LLVMProjectIRDB(llvm::MemoryBufferRef Buf)
+    : Ctx(new llvm::LLVMContext()) {
+  auto M = getParsedIRModuleOrErr(Buf, *Ctx);
+  if (!M) {
+    return;
+  }
+
+  auto *NonConst = M->get();
+  Mod = std::move(M.get());
+  ModulesToSlotTracker::setMSTForModule(Mod.get());
+  preprocessModule(NonConst);
+}
 LLVMProjectIRDB::LLVMProjectIRDB(llvm::MemoryBufferRef Buf,
                                  bool EnableOpaquePointers)
     : Ctx(new llvm::LLVMContext()) {

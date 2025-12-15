@@ -351,7 +351,7 @@ template <typename L, uint8_t N> struct JoinEdgeFunction {
       if (const auto *Join = llvm::dyn_cast<JoinEdgeFunction>(EF)) {
         return {Join->OtherEF, Join->Seed};
       }
-      return {llvm::makeArrayRef(EF), JLattice::top()};
+      return {llvm::ArrayRef(EF), JLattice::top()};
     };
 
     auto [LVec, LSeed] = GetEFArrayAndSeed(LHS);
