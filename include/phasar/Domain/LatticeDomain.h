@@ -13,6 +13,7 @@
 #include "phasar/Utils/ByRef.h"
 #include "phasar/Utils/DebugOutput.h"
 #include "phasar/Utils/JoinLattice.h"
+#include "phasar/Utils/Macros.h"
 #include "phasar/Utils/TypeTraits.h"
 
 #include "llvm/ADT/Hashing.h"
@@ -22,6 +23,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <cstdint>
+#include <functional>
 #include <ostream>
 #include <variant>
 
@@ -78,10 +80,10 @@ struct LatticeDomain : public std::variant<Top, L, Bottom> {
   [[nodiscard]] inline const L *getValueOrNull() const noexcept {
     return std::get_if<L>(this);
   }
-  template <typename LL = L,
-            typename = std::enable_if_t<is_llvm_hashable_v<LL>>>
-  friend llvm::hash_code
-  hash_value(const LatticeDomain &LD) noexcept { // NOLINT
+
+  friend llvm::hash_code hash_value(const LatticeDomain &LD) noexcept
+    requires is_llvm_hashable_v<L>
+  { // NOLINT
     if (LD.isBottom()) {
       return llvm::hash_value(INTPTR_MAX);
     }
@@ -98,6 +100,13 @@ struct LatticeDomain : public std::variant<Top, L, Bottom> {
   [[nodiscard]] inline const L &assertGetValue() const noexcept {
     assert(std::holds_alternative<L>(*this));
     return std::get<L>(*this);
+  }
+
+  template <typename TransformFn, typename... ArgsT>
+  void onValue(TransformFn Transform, ArgsT &&...Args) {
+    if (auto *Val = getValueOrNull()) {
+      std::invoke(std::move(Transform), *Val, PSR_FWD(Args)...);
+    }
   }
 };
 
@@ -140,9 +149,8 @@ inline bool operator==(const LatticeDomain<L> &Lhs,
   return true;
 }
 
-template <
-    typename L, typename LL,
-    typename = std::void_t<decltype(std::declval<LL>() == std::declval<L>())>>
+template <typename L, typename LL>
+  requires AreEqualityComparable<LL, L>
 inline bool operator==(const LL &Lhs, const LatticeDomain<L> &Rhs) {
   if (auto RVal = Rhs.getValueOrNull()) {
     return Lhs == *RVal;
@@ -150,9 +158,8 @@ inline bool operator==(const LL &Lhs, const LatticeDomain<L> &Rhs) {
   return false;
 }
 
-template <
-    typename L, typename LL,
-    typename = std::void_t<decltype(std::declval<LL>() == std::declval<L>())>>
+template <typename L, typename LL>
+  requires AreEqualityComparable<LL, L>
 inline bool operator==(const LatticeDomain<L> &Lhs, const LL &Rhs) {
   return Rhs == Lhs;
 }
@@ -176,52 +183,6 @@ template <typename L>
 inline bool operator==(Top /*Lhs*/, const LatticeDomain<L> &Rhs) noexcept {
   return Rhs.isTop();
 }
-
-#if __cplusplus < 202002L
-
-// With C++20 inequality is defaulted if equality is provided
-
-template <typename L>
-inline bool operator!=(const LatticeDomain<L> &Lhs,
-                       const LatticeDomain<L> &Rhs) {
-  return !(Lhs == Rhs);
-}
-
-template <
-    typename L, typename LL,
-    typename = std::void_t<decltype(std::declval<LL>() == std::declval<L>())>>
-inline bool operator!=(const LL &Lhs, const LatticeDomain<L> Rhs) {
-  return !(Lhs == Rhs);
-}
-
-template <
-    typename L, typename LL,
-    typename = std::void_t<decltype(std::declval<LL>() == std::declval<L>())>>
-inline bool operator!=(const LatticeDomain<L> Lhs, const LL &Rhs) {
-  return !(Rhs == Lhs);
-}
-
-template <typename L>
-inline bool operator!=(const LatticeDomain<L> &Lhs, Bottom /*Rhs*/) noexcept {
-  return !(Lhs == Bottom{});
-}
-
-template <typename L>
-inline bool operator!=(const LatticeDomain<L> &Lhs, Top /*Rhs*/) noexcept {
-  return !(Lhs == Top{});
-}
-
-template <typename L>
-inline bool operator!=(Bottom /*Lhs*/, const LatticeDomain<L> &Rhs) noexcept {
-  return !(Bottom{} == Rhs);
-}
-
-template <typename L>
-inline bool operator!=(Top /*Lhs*/, const LatticeDomain<L> &Rhs) noexcept {
-  return !(Top{} == Rhs);
-}
-
-#endif
 
 template <typename L>
 inline bool operator<(const LatticeDomain<L> &Lhs,
@@ -261,6 +222,14 @@ template <typename L> struct JoinLatticeTraits<LatticeDomain<L>> {
       return LHS;
     }
 
+    if constexpr (has_adl_join<l_t>) {
+      if (auto LhsPtr = LHS.getValueOrNull()) {
+        if (auto RhsPtr = RHS.getValueOrNull()) {
+          return psr::adl_join(*LhsPtr, *RhsPtr);
+        }
+      }
+    }
+
     return Bottom{};
   }
 };
@@ -268,11 +237,9 @@ template <typename L> struct JoinLatticeTraits<LatticeDomain<L>> {
 /// If we know that a stored L value is never Top or Bottom, we don't need to
 /// store the discriminator of the std::variant.
 template <typename L>
-struct NonTopBotValue<
-    LatticeDomain<L>,
-    std::enable_if_t<
-        std::is_nothrow_constructible_v<LatticeDomain<L>, const L &> ||
-        !std::is_nothrow_copy_constructible_v<LatticeDomain<L>>>> {
+  requires(std::is_nothrow_constructible_v<LatticeDomain<L>, const L &> ||
+           !std::is_nothrow_copy_constructible_v<LatticeDomain<L>>)
+struct NonTopBotValue<LatticeDomain<L>> {
   using type = L;
 
   static L unwrap(LatticeDomain<L> Value) noexcept(
@@ -293,7 +260,12 @@ template <typename L> struct hash<psr::LatticeDomain<L>> {
       return SIZE_MAX - 1;
     }
     assert(LD.getValueOrNull() != nullptr);
-    return std::hash<L>{}(*LD.getValueOrNull());
+    if constexpr (psr::is_std_hashable_v<L>) {
+      return std::hash<L>{}(*LD.getValueOrNull());
+    } else {
+      using llvm::hash_value;
+      return hash_value(*LD.getValueOrNull());
+    }
   }
 };
 } // namespace std

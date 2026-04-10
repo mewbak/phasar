@@ -17,14 +17,13 @@
 #include "llvm/ADT/STLForwardCompat.h"
 
 #include <type_traits>
-#include <utility>
 
 namespace psr {
 
-template <typename MapT, typename KeyT,
-          typename = std::enable_if_t<std::is_lvalue_reference_v<MapT>>>
-static auto getOrDefault(MapT &&Map, KeyT &&Key) -> ByConstRef<
-    llvm::remove_cvref_t<decltype(Map.find(PSR_FWD(Key))->second)>> {
+template <typename MapT, typename KeyT>
+  requires std::is_lvalue_reference_v<MapT>
+inline auto getOrDefault(MapT &&Map, KeyT &&Key) -> ByConstRef<
+    std::remove_cvref_t<decltype(Map.find(PSR_FWD(Key))->second)>> {
   auto It = Map.find(PSR_FWD(Key));
   if (It == Map.end()) {
     return default_value();
@@ -33,12 +32,10 @@ static auto getOrDefault(MapT &&Map, KeyT &&Key) -> ByConstRef<
   return It->second;
 }
 
-template <
-    typename MapT, typename KeyT,
-    typename = std::enable_if_t<std::is_lvalue_reference_v<MapT>>,
-    std::enable_if_t<
-        !psr::CanEfficientlyPassByValue<llvm::remove_cvref_t<KeyT>>, int> = 0>
-static auto getOrNull(MapT &&Map, KeyT &&Key)
+template <typename MapT, typename KeyT>
+  requires(std::is_lvalue_reference_v<MapT> &&
+           !psr::CanEfficientlyPassByValue<llvm::remove_cvref_t<KeyT>>)
+inline auto getOrNull(MapT &&Map, KeyT &&Key)
     -> decltype(&Map.find(PSR_FWD(Key))->second) {
   auto It = Map.find(PSR_FWD(Key));
   decltype(&It->second) Ret = nullptr;
@@ -49,14 +46,12 @@ static auto getOrNull(MapT &&Map, KeyT &&Key)
   return Ret;
 }
 
-template <
-    typename MapT, typename KeyT,
-    typename = std::enable_if_t<std::is_lvalue_reference_v<MapT>>,
-    std::enable_if_t<psr::CanEfficientlyPassByValue<llvm::remove_cvref_t<KeyT>>,
-                     int> = 0>
-static auto getOrNull(MapT &&Map, KeyT Key)
+template <typename MapT, typename KeyT>
+  requires(std::is_lvalue_reference_v<MapT> &&
+           psr::CanEfficientlyPassByValue<llvm::remove_cvref_t<KeyT>>)
+inline auto getOrNull(MapT &&Map, KeyT Key)
     -> decltype(&Map.find(Key)->second) {
-  auto It = Map.find(Key);
+  auto It = Map.find(PSR_FWD(Key));
   decltype(&It->second) Ret = nullptr;
   if (It != Map.end()) {
     Ret = &It->second;
@@ -64,6 +59,44 @@ static auto getOrNull(MapT &&Map, KeyT Key)
 
   return Ret;
 }
+
+template <typename MapT, typename KeyT, typename ValueT>
+  requires CanEfficientlyPassByValue<
+      typename std::remove_cvref_t<MapT>::mapped_type>
+inline auto getOr(MapT &&Map, KeyT &&Key, ValueT &&FallbackVal)
+    -> std::remove_cvref_t<decltype(Map.find(PSR_FWD(Key))->second)> {
+  auto It = Map.find(PSR_FWD(Key));
+
+  if (It == Map.end()) {
+    return PSR_FWD(FallbackVal);
+  }
+
+  return It->second;
+}
+
+template <typename MapT, typename KeyT>
+  requires(!CanEfficientlyPassByValue<
+               typename std::remove_cvref_t<MapT>::mapped_type> &&
+           std::is_lvalue_reference_v<MapT>)
+inline auto
+getOr(MapT &&Map, KeyT &&Key,
+      const typename std::remove_cvref_t<MapT>::mapped_type &FallbackVal)
+    -> decltype(Map.find(PSR_FWD(Key))->second) const & {
+  auto It = Map.find(PSR_FWD(Key));
+
+  if (It == Map.end()) {
+    return FallbackVal;
+  }
+
+  return It->second;
+}
+
+template <typename MapT, typename KeyT>
+  requires(!CanEfficientlyPassByValue<
+              typename std::remove_cvref_t<MapT>::mapped_type>)
+auto getOr(MapT &&Map, KeyT &&Key,
+           const typename std::remove_cvref_t<MapT>::mapped_type &&FallbackVal)
+    -> decltype(Map.find(PSR_FWD(Key))->second) const & = delete;
 } // namespace psr
 
 #endif // PHASAR_UTILS_MAPUTILS_H

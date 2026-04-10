@@ -18,7 +18,6 @@
 #include "phasar/PhasarLLVM/DataFlow/IfdsIde/Problems/ExtendedTaintAnalysis/KillIfSanitizedEdgeFunction.h"
 #include "phasar/PhasarLLVM/DataFlow/IfdsIde/Problems/ExtendedTaintAnalysis/TransferEdgeFunction.h"
 #include "phasar/PhasarLLVM/Pointer/LLVMAliasInfo.h"
-#include "phasar/PhasarLLVM/TypeHierarchy/LLVMTypeHierarchy.h"
 #include "phasar/PhasarLLVM/Utils/DataFlowAnalysisType.h"
 #include "phasar/PhasarLLVM/Utils/LLVMShorthands.h"
 #include "phasar/Pointer/PointsToInfo.h"
@@ -31,6 +30,7 @@
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/WithColor.h"
 
 #include <algorithm>
 #include <type_traits>
@@ -55,9 +55,10 @@ IDEExtendedTaintAnalysis::initialSeeds() {
                             this->base_t::getZeroValue(), bottomElement());
 
   if (Seeds.empty()) {
-    llvm::errs() << "WARNING: No initial seeds specified, skip the analysis. "
-                    "Please specify an entrypoint function or in the "
-                    "TaintConfig a source llvm::Instruction*\n";
+    llvm::WithColor::warning()
+        << "No initial seeds specified, skip the analysis. "
+           "Please specify an entrypoint function or in the "
+           "TaintConfig a source llvm::Instruction*\n";
   }
 
   return Seeds;
@@ -350,7 +351,7 @@ IDEExtendedTaintAnalysis::getCallFlowFunction(n_t CallStmt, f_t DestFun) {
         /// padding for now.
       }
       Offs +=
-          ptrdiff_t(DL.getTypeAllocSize(It->get()->getType()).getFixedSize());
+          ptrdiff_t(DL.getTypeAllocSize(It->get()->getType()).getFixedValue());
     }
 #ifdef XTAINT_DIAGNOSTICS
     allTaintedValues.insert(ret.begin(), ret.end());

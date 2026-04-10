@@ -18,7 +18,6 @@
 
 #include "phasar/Utils/ErrorHandling.h"
 #include "phasar/Utils/Logger.h"
-#include "phasar/Utils/Utilities.h"
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -87,4 +86,21 @@ psr::openFileStream(const llvm::Twine &Filename) {
                      "Failed to open file: " << Buf << "; " << EC.message());
   }
   return OFS;
+}
+
+std::unique_ptr<llvm::raw_ostream>
+psr::openFileForWrite(const llvm::Twine &FilePath) {
+  llvm::SmallString<256> Buf;
+  auto FileName = FilePath.toStringRef(Buf);
+
+  std::error_code EC;
+  auto Ret = std::make_unique<llvm::raw_fd_ostream>(FileName, EC);
+  if (EC) {
+    llvm::errs() << "[ERROR]: Failed to open file '" << FileName
+                 << "' for writing:\n";
+    llvm::errs() << "  > " << EC.message() << '\n';
+    Ret.reset();
+  }
+
+  return Ret;
 }

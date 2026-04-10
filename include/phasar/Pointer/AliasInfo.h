@@ -73,11 +73,10 @@ public:
 
   constexpr AliasInfoRef() noexcept = default;
   constexpr AliasInfoRef(std::nullptr_t) noexcept : AliasInfoRef() {}
-  template <typename ConcreteAA,
-            typename = std::enable_if_t<
-                !std::is_base_of_v<AliasInfoRef, ConcreteAA> &&
-                std::is_same_v<v_t, typename ConcreteAA::v_t> &&
-                std::is_same_v<n_t, typename ConcreteAA::n_t>>>
+  template <typename ConcreteAA>
+    requires(!std::is_base_of_v<AliasInfoRef, ConcreteAA> &&
+             std::is_same_v<v_t, typename ConcreteAA::v_t> &&
+             std::is_same_v<n_t, typename ConcreteAA::n_t>)
   constexpr AliasInfoRef(ConcreteAA *AA) noexcept
       : AA(AA), VT((std::is_empty_v<ConcreteAA> || AA) ? &VTableFor<ConcreteAA>
                                                        : nullptr) {}
@@ -233,10 +232,10 @@ private:
         return static_cast<ConcreteAA *>(AA)->alias(Pointer1, Pointer2,
                                                     AtInstruction);
       },
-      [](const void *AA) noexcept {
+      [](const void *AA) noexcept -> bool {
         return static_cast<const ConcreteAA *>(AA)->isInterProcedural();
       },
-      [](const void *AA) noexcept {
+      [](const void *AA) noexcept -> AliasAnalysisType {
         return static_cast<const ConcreteAA *>(AA)->getAliasAnalysisType();
       },
       [](void *AA, ByConstRef<v_t> Pointer, ByConstRef<n_t> AtInstruction) {
@@ -260,15 +259,28 @@ private:
         static_cast<const ConcreteAA *>(AA)->printAsJson(OS);
       },
       [](void *AA, void *Other) {
-        static_cast<ConcreteAA *>(AA)->mergeWith(
-            *static_cast<ConcreteAA *>(Other));
+        if constexpr (requires(ConcreteAA &CAA) { CAA.mergeWith(CAA); }) {
+          static_cast<ConcreteAA *>(AA)->mergeWith(
+              *static_cast<ConcreteAA *>(Other));
+        } else {
+          llvm::report_fatal_error(llvm::getTypeName<ConcreteAA>() +
+                                   " does not support mergeWith()");
+        }
       },
       [](void *AA, ByConstRef<v_t> Pointer1, ByConstRef<v_t> Pointer2,
          ByConstRef<n_t> AtInstruction, AliasResult Kind) {
-        static_cast<ConcreteAA *>(AA)->introduceAlias(Pointer1, Pointer2,
-                                                      AtInstruction, Kind);
+        if constexpr (requires(ConcreteAA &CAA) {
+                        CAA.introduceAlias(Pointer1, Pointer2, AtInstruction,
+                                           Kind);
+                      }) {
+          static_cast<ConcreteAA *>(AA)->introduceAlias(Pointer1, Pointer2,
+                                                        AtInstruction, Kind);
+        } else {
+          llvm::report_fatal_error(llvm::getTypeName<ConcreteAA>() +
+                                   " does not support introduceAlias()");
+        }
       },
-      [](const void *AA) noexcept {
+      [](const void *AA) noexcept -> AnalysisProperties {
         return static_cast<const ConcreteAA *>(AA)->getAnalysisProperties();
       },
       []() noexcept { return llvm::getTypeName<ConcreteAA>(); },

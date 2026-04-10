@@ -10,6 +10,7 @@
 #ifndef PHASAR_UTILS_UTILITIES_H_
 #define PHASAR_UTILS_UTILITIES_H_
 
+#include "phasar/Utils/ByRef.h"
 #include "phasar/Utils/TypeTraits.h"
 
 #include "llvm/ADT/SmallVector.h"
@@ -79,8 +80,8 @@ std::set<std::set<T>> computePowerSet(const std::set<T> &S) {
 /// requirements, although the performance is probably higher for small
 /// elements that are trivially copyable.
 template <typename ContainerTy, typename OtherContainerTy>
-std::enable_if_t<!has_erase_iterator_v<ContainerTy>>
-intersectWith(ContainerTy &Dest, const OtherContainerTy &Src) {
+  requires(!has_erase_iterator_v<ContainerTy>)
+void intersectWith(ContainerTy &Dest, const OtherContainerTy &Src) {
   static_assert(std::is_same_v<typename ContainerTy::value_type,
                                typename OtherContainerTy::value_type>,
                 "The containers Src and Dest must be compatible");
@@ -124,9 +125,8 @@ intersectWith(ContainerTy &Dest, const OtherContainerTy &Src) {
   }
 }
 
-template <typename ContainerTy, typename OtherContainerTy>
-std::enable_if_t<has_erase_iterator_v<ContainerTy>>
-intersectWith(ContainerTy &Dest, const OtherContainerTy &Src) {
+template <has_erase_iterator_v ContainerTy, typename OtherContainerTy>
+void intersectWith(ContainerTy &Dest, const OtherContainerTy &Src) {
   static_assert(std::is_same_v<typename ContainerTy::value_type,
                                typename OtherContainerTy::value_type>,
                 "The containers Src and Dest must be compatible");
@@ -270,13 +270,21 @@ forward_like(U &&X) noexcept { // NOLINT
   }
 }
 
+template <typename T> constexpr auto copyOrRef(T &Val) noexcept {
+  if constexpr (CanEfficientlyPassByValue<T>) {
+    return Val;
+  } else {
+    return std::ref(Val);
+  }
+}
+
 struct identity {
   template <typename T> decltype(auto) operator()(T &&Val) const noexcept {
     return std::forward<T>(Val);
   }
 };
 
-template <typename T, typename = std::enable_if_t<is_llvm_printable_v<T>>>
+template <is_llvm_printable_v T>
 llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
                               const std::optional<T> &Opt) {
   if (Opt) {
@@ -289,8 +297,8 @@ llvm::raw_ostream &operator<<(llvm::raw_ostream &OS,
 }
 
 template <typename T>
-LLVM_ATTRIBUTE_ALWAYS_INLINE std::enable_if_t<!std::is_pointer_v<T>, T &>
-assertNotNull(T &Value) {
+  requires(!std::is_pointer_v<T>)
+LLVM_ATTRIBUTE_ALWAYS_INLINE T &assertNotNull(T &Value) {
   return Value;
 }
 

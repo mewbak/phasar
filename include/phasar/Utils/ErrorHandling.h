@@ -19,7 +19,8 @@
 
 namespace psr {
 
-/// \file This file contains useful functions for handling errors, by using
+/// \file
+/// This file contains useful functions for handling errors, by using
 /// std::system_error, or returning null or a default value.
 
 template <typename T> T getOrThrow(llvm::ErrorOr<T> ValOrErr) {
@@ -38,8 +39,8 @@ std::optional<T> getOrNull(llvm::ErrorOr<T> ValOrErr) noexcept(
   return std::nullopt;
 }
 
-template <typename T,
-          typename = std::enable_if_t<std::is_default_constructible_v<T>>>
+template <typename T>
+  requires std::is_default_constructible_v<T>
 T getOrEmpty(llvm::ErrorOr<T> ValOrErr) noexcept(
     std::is_nothrow_move_constructible_v<T>) {
   if (ValOrErr) {

@@ -37,8 +37,7 @@ AbstractMemoryLocationImpl::AbstractMemoryLocationImpl(
 AbstractMemoryLocationImpl::AbstractMemoryLocationImpl(
     const llvm::Value *Baseptr, llvm::SmallVectorImpl<ptrdiff_t> &&Offsets,
     unsigned Lifetime) noexcept
-    : AbstractMemoryLocationImpl(Baseptr, llvm::makeArrayRef(Offsets),
-                                 Lifetime) {}
+    : AbstractMemoryLocationImpl(Baseptr, llvm::ArrayRef(Offsets), Lifetime) {}
 AbstractMemoryLocationImpl::AbstractMemoryLocationImpl(
     const llvm::Value *Baseptr, llvm::ArrayRef<ptrdiff_t> Offsets,
     unsigned Lifetime) noexcept
@@ -52,11 +51,11 @@ bool AbstractMemoryLocationImpl::isZero() const {
 }
 
 llvm::ArrayRef<ptrdiff_t> AbstractMemoryLocationImpl::offsets() const {
-  return llvm::makeArrayRef(this->getTrailingObjects<ptrdiff_t>(), NumOffsets);
+  return llvm::ArrayRef(this->getTrailingObjects<ptrdiff_t>(), NumOffsets);
 }
 
-auto AbstractMemoryLocationImpl::computeOffset(
-    const llvm::DataLayout &DL, const llvm::GetElementPtrInst *Gep)
+auto AbstractMemoryLocationImpl::computeOffset(const llvm::DataLayout &DL,
+                                               const llvm::GEPOperator *Gep)
     -> std::optional<ptrdiff_t> {
   // TODO: Use results from IDELinearConstantAnalysis here (LLVM 12 has an
   // overload of accumulateConstantOffset that takes an external analysis

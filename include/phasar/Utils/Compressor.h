@@ -1,29 +1,39 @@
+/******************************************************************************
+ * Copyright (c) 2024 Fabian Schiebel.
+ * All rights reserved. This program and the accompanying materials are made
+ * available under the terms of LICENSE.txt.
+ *
+ * Contributors:
+ *     Fabian Schiebel and other
+ *****************************************************************************/
+
 #ifndef PHASAR_UTILS_COMPRESSOR_H
 #define PHASAR_UTILS_COMPRESSOR_H
 
 #include "phasar/Utils/ByRef.h"
+#include "phasar/Utils/Macros.h"
 #include "phasar/Utils/TypeTraits.h"
+#include "phasar/Utils/TypedVector.h"
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseMapInfo.h"
-#include "llvm/ADT/SmallVector.h"
 
+#include <concepts>
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <optional>
-#include <type_traits>
 
 namespace psr {
-template <typename T, typename IdT = uint32_t, typename Enable = void>
-class Compressor;
+template <typename T, IdType IdT = uint32_t> class Compressor;
 
 /// \brief A utility class that assigns a sequential Id to every inserted
 /// object.
 ///
 /// This specialization handles types that can be efficiently passed by value
-template <typename T, typename IdT>
-class Compressor<T, IdT, std::enable_if_t<CanEfficientlyPassByValue<T>>> {
+template <typename T, IdType IdT>
+  requires(CanEfficientlyPassByValue<T> && has_llvm_dense_map_info<T>)
+class Compressor<T, IdT> {
 public:
   void reserve(size_t Capacity) {
     assert(Capacity <= UINT32_MAX);
@@ -32,13 +42,28 @@ public:
   }
 
   IdT getOrInsert(T Elem) {
-    auto [It, Inserted] = ToInt.try_emplace(Elem, IdT(ToInt.size()));
+    auto [It, Inserted] = ToInt.try_emplace(Elem, IdT(FromInt.size()));
     if (Inserted) {
       FromInt.push_back(Elem);
     }
     return It->second;
   }
 
+  std::pair<IdT, bool> insert(T Elem) {
+    auto [It, Inserted] = ToInt.try_emplace(Elem, IdT(FromInt.size()));
+    if (Inserted) {
+      FromInt.push_back(Elem);
+    }
+    return {It->second, Inserted};
+  }
+
+  IdT insertDummy(T Elem) {
+    auto Ret = IdT(FromInt.size());
+    FromInt.push_back(Elem);
+    return Ret;
+  }
+
+  [[nodiscard]]
   std::optional<IdT> getOrNull(T Elem) const {
     if (auto It = ToInt.find(Elem); It != ToInt.end()) {
       return It->second;
@@ -46,13 +71,19 @@ public:
     return std::nullopt;
   }
 
-  [[nodiscard]] bool inbounds(IdT Idx) const noexcept {
-    return size_t(Idx) < FromInt.size();
+  [[nodiscard]] IdT get(T Elem) const {
+    auto It = ToInt.find(Elem);
+    assert(It != ToInt.end());
+    return It->second;
   }
 
-  T operator[](IdT Idx) const noexcept {
+  [[nodiscard]] bool inbounds(IdT Idx) const noexcept {
+    return FromInt.inbounds(Idx);
+  }
+
+  [[nodiscard]] T operator[](IdT Idx) const noexcept {
     assert(inbounds(Idx));
-    return FromInt[size_t(Idx)];
+    return FromInt[Idx];
   }
 
   [[nodiscard]] size_t size() const noexcept { return FromInt.size(); }
@@ -61,8 +92,10 @@ public:
            ToInt.getMemorySize() / sizeof(typename decltype(ToInt)::value_type);
   }
 
-  auto begin() const noexcept { return FromInt.begin(); }
-  auto end() const noexcept { return FromInt.end(); }
+  [[nodiscard]] auto begin() const noexcept { return FromInt.begin(); }
+  [[nodiscard]] auto end() const noexcept { return FromInt.end(); }
+
+  [[nodiscard]] auto enumerate() const noexcept { return FromInt.enumerate(); }
 
   void clear() noexcept {
     ToInt.clear();
@@ -71,23 +104,24 @@ public:
 
 private:
   llvm::DenseMap<T, IdT> ToInt;
-  llvm::SmallVector<T, 0> FromInt;
+  TypedVector<IdT, T, 0> FromInt;
 };
 
 /// \brief A utility class that assigns a sequential Id to every inserted
 /// object.
 ///
 /// This specialization handles types that cannot be efficiently passed by value
-template <typename T, typename IdT>
-class Compressor<T, IdT, std::enable_if_t<!CanEfficientlyPassByValue<T>>> {
+template <typename T, IdType IdT>
+  requires(!CanEfficientlyPassByValue<T> || !has_llvm_dense_map_info<T>)
+class Compressor<T, IdT> {
 public:
   void reserve(size_t Capacity) {
     assert(Capacity <= UINT32_MAX);
     ToInt.reserve(Capacity);
   }
 
-  /// Returns the index of the given element in the compressors storage. If the
-  /// element isn't present yet, it will be added first and its index will
+  /// Returns the index of the given element in the compressors storage. If
+  /// the element isn't present yet, it will be added first and its index will
   /// then be returned.
   IdT getOrInsert(const T &Elem) {
     if (auto It = ToInt.find(&Elem); It != ToInt.end()) {
@@ -99,8 +133,8 @@ public:
     return Ret;
   }
 
-  /// Returns the index of the given element in the compressors storage. If the
-  /// element isn't present yet, it will be added first and its index will
+  /// Returns the index of the given element in the compressors storage. If
+  /// the element isn't present yet, it will be added first and its index will
   /// then be returned.
   IdT getOrInsert(T &&Elem) {
     if (auto It = ToInt.find(&Elem); It != ToInt.end()) {
@@ -112,20 +146,52 @@ public:
     return Ret;
   }
 
-  /// Returns the index of the given element in the compressors storage. If the
-  /// element isn't present, std::nullopt will be returned
-  std::optional<IdT> getOrNull(const T &Elem) const {
+  std::pair<IdT, bool> insert(const T &Elem) {
+    if (auto It = ToInt.find(&Elem); It != ToInt.end()) {
+      return {It->second, false};
+    }
+    auto Ret = Id(FromInt.size());
+    auto *Ins = &FromInt.emplace_back(Elem);
+    ToInt[Ins] = Ret;
+    return {Ret, true};
+  }
+
+  std::pair<IdT, bool> insert(T &&Elem) {
+    if (auto It = ToInt.find(&Elem); It != ToInt.end()) {
+      return {It->second, false};
+    }
+    auto Ret = Id(FromInt.size());
+    auto *Ins = &FromInt.emplace_back(std::move(Elem));
+    ToInt[Ins] = Ret;
+    return {Ret, true};
+  }
+
+  IdT insertDummy(std::convertible_to<T> auto &&Elem) {
+    auto Ret = Id(FromInt.size());
+    FromInt.emplace_back(PSR_FWD(Elem));
+    return Ret;
+  }
+
+  /// Returns the index of the given element in the compressors storage. If
+  /// the element isn't present, std::nullopt will be returned
+  [[nodiscard]] std::optional<IdT> getOrNull(const T &Elem) const {
     if (auto It = ToInt.find(&Elem); It != ToInt.end()) {
       return It->second;
     }
     return std::nullopt;
   }
 
+  [[nodiscard]] IdT get(const T &Elem) const {
+    auto It = ToInt.find(&Elem);
+    assert(It != ToInt.end());
+    return It->second;
+  }
+
   [[nodiscard]] bool inbounds(IdT Idx) const noexcept {
     return size_t(Idx) < FromInt.size();
   }
 
-  const T &operator[](IdT Idx) const noexcept {
+  [[nodiscard]] const T &operator[](IdT Idx) const noexcept {
     assert(inbounds(Idx));
     return FromInt[size_t(Idx)];
   }
@@ -138,6 +204,14 @@ public:
 
   auto begin() const noexcept { return FromInt.begin(); }
   auto end() const noexcept { return FromInt.end(); }
+
+  [[nodiscard]] auto enumerate() const noexcept {
+    return llvm::map_range(llvm::enumerate(FromInt),
+                           [](const auto &IndexAndVal) {
+                             return std::pair<IdT, const T &>{
+                                 IdT(IndexAndVal.index()), IndexAndVal.value()};
+                           });
+  }
 
   void clear() noexcept {
     ToInt.clear();
@@ -172,6 +246,45 @@ private:
 
   std::deque<T> FromInt;
   llvm::DenseMap<const T *, IdT, DSI> ToInt;
+};
+
+struct NoneCompressor final {
+  constexpr NoneCompressor() noexcept = default;
+
+  template <typename T>
+    requires(!std::is_same_v<NoneCompressor, T>)
+  constexpr NoneCompressor(const T & /*unused*/) noexcept {}
+
+  template <typename T>
+  [[nodiscard]] constexpr decltype(auto) getOrInsert(T &&Val) const noexcept {
+    return std::forward<T>(Val);
+  }
+
+  template <typename T>
+  constexpr std::pair<T, bool> insert(const T &Elem) const {
+    return {Elem, false};
+  }
+
+  template <typename T>
+  constexpr std::optional<T> getOrNull(const T &Elem) const {
+    return {Elem};
+  }
+
+  template <typename T> constexpr T get(const T &Elem) const { return Elem; }
+
+  template <typename T>
+  [[nodiscard]] constexpr bool inbounds(const T & /*Idx*/) const noexcept {
+    return true;
+  }
+
+  template <typename T>
+  [[nodiscard]] constexpr decltype(auto) operator[](T &&Val) const noexcept {
+    return std::forward<T>(Val);
+  }
+  constexpr void reserve(size_t /*unused*/) const noexcept {}
+
+  [[nodiscard]] constexpr size_t size() const noexcept { return 0; }
+  [[nodiscard]] constexpr size_t capacity() const noexcept { return 0; }
 };
 
 } // namespace psr

@@ -7,9 +7,11 @@ set(UtilsSources
   LLVMShorthandsTest.cpp
   PAMMTest.cpp
   StableVectorTest.cpp
+  ValueIdMapTest.cpp
   AnalysisPrinterTest.cpp
   OnTheFlyAnalysisPrinterTest.cpp
   SourceMgrPrinterTest.cpp
+  SCCGenericTest.cpp
 )
 
 if(PHASAR_ENABLE_DYNAMIC_LOG)

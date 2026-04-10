@@ -61,6 +61,8 @@ protected:
 template <typename T, bool RequireAlignment = false>
 class [[clang::trivial_abi]] MaybeUniquePtr
     : detail::MaybeUniquePtrBase<T, RequireAlignment> {
+  template <typename U, bool Align> friend class MaybeUniquePtr;
+
   using detail::MaybeUniquePtrBase<T, RequireAlignment>::Data;
 
 public:
@@ -73,14 +75,21 @@ public:
   constexpr MaybeUniquePtr(std::unique_ptr<T> &&Owner) noexcept
       : MaybeUniquePtr(Owner.release(), true) {}
 
-  template <typename TT,
-            typename = std::enable_if_t<!std::is_same_v<T, TT> &&
-                                        std::is_convertible_v<TT *, T *>>>
+  template <typename TT>
+    requires(!std::is_same_v<T, TT> && std::is_convertible_v<TT *, T *>)
   constexpr MaybeUniquePtr(std::unique_ptr<TT> &&Owner) noexcept
       : MaybeUniquePtr(Owner.release(), true) {}
 
   constexpr MaybeUniquePtr(MaybeUniquePtr &&Other) noexcept
       : detail::MaybeUniquePtrBase<T, RequireAlignment>(std::move(Other)) {
+    Other.Data = {};
+  }
+
+  constexpr MaybeUniquePtr(
+      MaybeUniquePtr<std::remove_const_t<T>> &&Other) noexcept
+    requires std::is_const_v<T>
+      : detail::MaybeUniquePtrBase<T, RequireAlignment>(Other.get(),
+                                                        Other.owns()) {
     Other.Data = {};
   }
 
@@ -107,9 +116,8 @@ public:
     return *this;
   }
 
-  template <typename TT,
-            typename = std::enable_if_t<!std::is_same_v<T, TT> &&
-                                        std::is_convertible_v<TT *, T *>>>
+  template <typename TT>
+    requires(!std::is_same_v<T, TT> && std::is_convertible_v<TT *, T *>)
   constexpr MaybeUniquePtr &operator=(std::unique_ptr<TT> &&Owner) noexcept {
     if (owns()) {
       delete Data.getPointer();
@@ -122,10 +130,7 @@ public:
   MaybeUniquePtr(const MaybeUniquePtr &) = delete;
   MaybeUniquePtr &operator=(const MaybeUniquePtr &) = delete;
 
-#if __cplusplus >= 202002L
-  constexpr
-#endif
-      ~MaybeUniquePtr() {
+  constexpr ~MaybeUniquePtr() {
     if (owns()) {
       delete Data.getPointer();
       Data = {};

@@ -6,6 +6,7 @@ add_phasar_library(phasar_llvm_pointer
   LINKS
     phasar_utils
     phasar_pointer
+    phasar_controlflow
     phasar_llvm_utils
     phasar_llvm_db
 
@@ -15,9 +16,6 @@ add_phasar_library(phasar_llvm_pointer
     Analysis
     Passes
     Demangle
-
-  LINK_PRIVATE
-    ${Boost_LIBRARIES}
 
   MODULE_FILES
     Pointer.cppm

@@ -1,13 +1,16 @@
 module;
 
 #include "phasar/Utils/AdjacencyList.h"
+#include "phasar/Utils/AlignNum.h"
 #include "phasar/Utils/AnalysisPrinterBase.h"
 #include "phasar/Utils/AnalysisProperties.h"
 #include "phasar/Utils/Average.h"
+#include "phasar/Utils/BitSet.h"
 #include "phasar/Utils/BitVectorSet.h"
 #include "phasar/Utils/BoxedPointer.h"
 #include "phasar/Utils/ByRef.h"
 #include "phasar/Utils/ChronoUtils.h"
+#include "phasar/Utils/Compressor.h"
 #include "phasar/Utils/DFAMinimizer.h"
 #include "phasar/Utils/DOTGraph.h"
 #include "phasar/Utils/DebugOutput.h"
@@ -17,11 +20,13 @@ module;
 #include "phasar/Utils/EnumFlags.h"
 #include "phasar/Utils/EquivalenceClassMap.h"
 #include "phasar/Utils/ErrorHandling.h"
+#include "phasar/Utils/FunctionDataFlowFacts.h"
 #include "phasar/Utils/GraphTraits.h"
 #include "phasar/Utils/IO.h"
 #include "phasar/Utils/InitPhasar.h"
 #include "phasar/Utils/IotaIterator.h"
 #include "phasar/Utils/JoinLattice.h"
+#include "phasar/Utils/LibCSummary.h"
 #include "phasar/Utils/Macros.h"
 #include "phasar/Utils/MaybeUniquePtr.h"
 #include "phasar/Utils/NullAnalysisPrinter.h"
@@ -32,6 +37,7 @@ module;
 #include "phasar/Utils/PointerUtils.h"
 #include "phasar/Utils/Printer.h"
 #include "phasar/Utils/RepeatIterator.h"
+#include "phasar/Utils/SCCGeneric.h"
 #include "phasar/Utils/SemiRing.h"
 #include "phasar/Utils/Soundness.h"
 #include "phasar/Utils/StableVector.h"
@@ -39,18 +45,22 @@ module;
 #include "phasar/Utils/TableWrappers.h"
 #include "phasar/Utils/Timer.h"
 #include "phasar/Utils/TypeTraits.h"
+#include "phasar/Utils/TypedVector.h"
 #include "phasar/Utils/Utilities.h"
 
 export module phasar.utils;
 
 export namespace psr {
 using psr::AdjacencyList;
+using psr::AlignNum;
+using psr::AlignStr;
 using psr::AnalysisPrinterBase;
 using psr::AnalysisProperties;
 using psr::GraphTraits;
 using psr::to_string;
 using psr::operator<<;
 using psr::AnalysisPropertiesMixin;
+using psr::BitSet;
 using psr::BitVectorSet;
 using psr::BoxedConstPtr;
 using psr::BoxedPtr;
@@ -93,11 +103,14 @@ using psr::hasFlag;
 using psr::InitPhasar;
 using psr::iota;
 using psr::IotaIterator;
+using psr::is_const_graph;
 using psr::is_graph;
 using psr::is_graph_edge;
 using psr::is_graph_trait;
 using psr::is_removable_graph_trait_v;
 using psr::is_reservable_graph_trait_v;
+using psr::is_weighted_const_graph;
+using psr::is_weighted_graph;
 using psr::JoinLattice;
 using psr::JoinLatticeTraits;
 using psr::Logger;
@@ -142,7 +155,12 @@ using psr::adl_to_string;
 using psr::AreEqualityComparable;
 using psr::assertAllNotNull;
 using psr::assertNotNull;
+using psr::Compressor;
 using psr::computePowerSet;
+using psr::computeSCCDependencies;
+using psr::computeSCCOrder;
+using psr::computeSCCs;
+using psr::computeSCCsAndTopologicalOrder;
 using psr::createTimeStamp;
 using psr::DefaultConstruct;
 using psr::DenseSet;
@@ -152,6 +170,7 @@ using psr::DummyUnorderedTable1d;
 using psr::ElementType;
 using psr::FalseFn;
 using psr::forward_like;
+using psr::getLibCSummary;
 using psr::has_adl_to_string_v;
 using psr::has_erase_iterator_v;
 using psr::has_getAsJson;
@@ -167,6 +186,7 @@ using psr::IdentityFn;
 using psr::IgnoreArgs;
 using psr::intersectWith;
 using psr::is_crtp_base_of_v;
+using psr::is_explicitly_convertible_to;
 using psr::is_iterable_over_v;
 using psr::is_iterable_v;
 using psr::is_llvm_hashable_v;
@@ -181,19 +201,33 @@ using psr::is_variant;
 using psr::is_variant_v;
 using psr::isConstructor;
 using psr::IsEqualityComparable;
+using psr::IsLessComparable;
 using psr::isMangled;
 using psr::Overloaded;
 using psr::remove_by_index;
 using psr::reserveIfPossible;
+using psr::SCCDependencyGraph;
+using psr::SCCHolder;
+using psr::SCCId;
+using psr::SCCOrder;
 using psr::scope_exit;
+using psr::SimpleTimer;
 using psr::SmallDenseTable1d;
 using psr::StableVector;
 using psr::StringIDLess;
 using psr::Table;
 using psr::Timer;
 using psr::TrueFn;
+using psr::TypedVector;
 using psr::UnorderedSet;
 using psr::UnorderedTable1d;
 using psr::variant_idx;
-// using psr::variant_idx;
+
 } // namespace psr
+
+export namespace psr::library_summary {
+using psr::library_summary::DataFlowFact;
+using psr::library_summary::FunctionDataFlowFacts;
+using psr::library_summary::Parameter;
+using psr::library_summary::ReturnValue;
+} // namespace psr::library_summary
