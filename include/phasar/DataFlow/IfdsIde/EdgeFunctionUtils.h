@@ -24,14 +24,15 @@ namespace psr {
 template <typename L> struct EdgeIdentity final {
   using l_t = L;
 
-  [[nodiscard]] ByConstRef<l_t> computeTarget(ByConstRef<l_t> Source) const
+  [[nodiscard]] constexpr ByConstRef<l_t>
+  computeTarget(ByConstRef<l_t> Source) const
       noexcept(std::is_nothrow_move_constructible_v<l_t>) {
     static_assert(std::is_trivially_copyable_v<EdgeIdentity>);
     static_assert(IsEdgeFunction<EdgeIdentity>);
     return Source;
   }
 
-  [[nodiscard]] static EdgeFunction<l_t>
+  [[nodiscard]] constexpr static EdgeFunction<l_t>
   compose(EdgeFunctionRef<EdgeIdentity> /*This*/,
           const EdgeFunction<l_t> &SecondFunction) {
     return SecondFunction;
@@ -50,7 +51,7 @@ template <typename L> struct ConstantEdgeFunction {
   using JLattice = JoinLatticeTraits<L>;
   using value_type = typename NonTopBotValue<l_t>::type;
 
-  [[nodiscard]] l_t computeTarget(ByConstRef<l_t> /*Source*/) const
+  [[nodiscard]] constexpr l_t computeTarget(ByConstRef<l_t> /*Source*/) const
       noexcept(std::is_nothrow_constructible_v<l_t, const value_type &>) {
     static_assert(IsEdgeFunction<ConstantEdgeFunction>);
     return Value;
@@ -120,7 +121,8 @@ template <typename L> struct AllBottom final {
   [[no_unique_address]] std::conditional_t<HasJoinLatticeTraits<l_t>, EmptyType,
                                            l_t> BottomValue;
 
-  [[nodiscard]] l_t computeTarget(ByConstRef<l_t> /*Source*/) const noexcept {
+  [[nodiscard]] constexpr l_t
+  computeTarget(ByConstRef<l_t> /*Source*/) const noexcept {
     static_assert(std::is_trivially_copyable_v<AllBottom>);
     static_assert(IsEdgeFunction<AllBottom>);
     if constexpr (HasJoinLatticeTraits<l_t>) {
@@ -130,7 +132,7 @@ template <typename L> struct AllBottom final {
     }
   }
 
-  [[nodiscard]] static EdgeFunction<l_t>
+  [[nodiscard]] constexpr static EdgeFunction<l_t>
   compose(EdgeFunctionRef<AllBottom> This,
           const EdgeFunction<l_t> &SecondFunction) {
     if (SecondFunction.isConstant()) {
@@ -154,7 +156,7 @@ template <typename L> struct AllBottom final {
     // return SecondFunction.isConstant() ? SecondFunction : This;
   }
 
-  [[nodiscard]] static EdgeFunction<l_t>
+  [[nodiscard]] constexpr static EdgeFunction<l_t>
   join(EdgeFunctionRef<AllBottom> This,
        const EdgeFunction<l_t> & /*OtherFunction*/) {
     return This;
@@ -181,7 +183,8 @@ template <typename L> struct AllTop final {
   [[no_unique_address]] std::conditional_t<HasJoinLatticeTraits<l_t>, EmptyType,
                                            l_t> TopValue;
 
-  [[nodiscard]] l_t computeTarget(ByConstRef<l_t> /*Source*/) const noexcept {
+  [[nodiscard]] constexpr l_t
+  computeTarget(ByConstRef<l_t> /*Source*/) const noexcept {
     static_assert(std::is_trivially_copyable_v<AllTop>);
     static_assert(IsEdgeFunction<AllTop>);
     if constexpr (HasJoinLatticeTraits<l_t>) {
@@ -197,7 +200,7 @@ template <typename L> struct AllTop final {
     return SecondFunction.isConstant() ? SecondFunction : This;
   }
 
-  [[nodiscard]] static EdgeFunction<l_t>
+  [[nodiscard]] constexpr static EdgeFunction<l_t>
   join(EdgeFunctionRef<AllTop> /*This*/,
        const EdgeFunction<l_t> &OtherFunction) {
     return OtherFunction;
@@ -205,7 +208,8 @@ template <typename L> struct AllTop final {
 
   [[nodiscard]] constexpr bool isConstant() const noexcept { return true; }
 
-  friend bool operator==(const AllTop<L> &LHS, const AllTop<L> &RHS) noexcept
+  constexpr friend bool operator==(const AllTop<L> &LHS,
+                                   const AllTop<L> &RHS) noexcept
     requires(!HasJoinLatticeTraits<L>)
   {
     return LHS.TopValue == RHS.TopValue;
@@ -477,8 +481,9 @@ defaultJoinOrNullNoId(const EdgeFunction<L> &This,
 }
 
 template <typename L>
-EdgeFunction<L> EdgeIdentity<L>::join(EdgeFunctionRef<EdgeIdentity> This,
-                                      const EdgeFunction<L> &OtherFunction) {
+inline EdgeFunction<L>
+EdgeIdentity<L>::join(EdgeFunctionRef<EdgeIdentity> This,
+                      const EdgeFunction<L> &OtherFunction) {
   if (llvm::isa<EdgeIdentity<L>>(OtherFunction) ||
       llvm::isa<AllTop<L>>(OtherFunction)) {
     return This;
